@@ -1,0 +1,791 @@
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const path = require('path');
+const config = require('./config');
+const services = require('./services');
+const viewManager = require('./viewManager');
+const externalApps = require('./externalApps');
+const featuresProtocol = require('./featuresProtocol');
+const velaApi = require('./velaApi/ipc');
+const mediaEngine = require('./mediaEngine');
+const imageEngine = require('./imageEngine');
+const modelCache = require('./modelCache');
+
+featuresProtocol.registerPrivileged();
+const FEATURES_DEV = process.argv.includes('--features-dev') || process.env.VELA_FEATURES_DEV === '1';
+const FEATURES_BASE = FEATURES_DEV ? 'http://localhost:5174' : 'app://features';
+
+const SMOKE = process.argv.includes('--smoke');
+if (SMOKE) app.setPath('userData', path.join(app.getPath('temp'), 'vela-smoke'));
+if (process.argv.includes('--shots')) app.disableHardwareAcceleration();
+const gotLock = app.requestSingleInstanceLock();
+let win = null;
+
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (win) {
+      if (win.isMinimized()) win.restore();
+      win.focus();
+    }
+  });
+
+  function send(channel, payload) {
+    if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+  }
+
+  function createWindow() {
+    win = new BrowserWindow({
+      width: 1200,
+      height: 800,
+      minWidth: 960,
+      minHeight: 640,
+      title: 'Vela',
+      autoHideMenuBar: true,
+      backgroundColor: '#0a0e18',
+      icon: path.join(__dirname, '..', '..', 'assets', 'icon.png'),
+      webPreferences: {
+        preload: path.join(__dirname, '..', 'preload', 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    });
+    viewManager.attach(win, send);
+    win.on('resize', () => viewManager.layout());
+    win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  }
+
+  async function openService(id) {
+    const cfg = config.load();
+    const svc = services.byId(id);
+    if (!svc) return;
+    switch (svc.kind) {
+      case 'coming-soon':
+        return;
+      case 'native': {
+        if (svc.needsAuth && !(await velaApi.status()).connected) {
+          viewManager.openLocal('connect', `${FEATURES_BASE}/connect.html`);
+          return;
+        }
+        viewManager.openLocal(id, `${FEATURES_BASE}/${svc.page}`);
+        if (id === 'media-converter') modelCache.prefetch();
+        return;
+      }
+      case 'external': {
+        try {
+          const result = await externalApps.launch(svc, cfg);
+          send('service:state', { type: result.alreadyRunning ? 'already-running' : 'running', id });
+        } catch (err) {
+          send('service:state', { type: 'not-found', id, message: err.message || String(err) });
+        }
+        return;
+      }
+    }
+  }
+
+  function notify(channel, payload) {
+    send(channel, payload);
+    const view = viewManager.getView();
+    if (view && !view.webContents.isDestroyed()) view.webContents.send(channel, payload);
+  }
+
+  function registerIpc() {
+    ipcMain.handle('services:list', () => services.listWithStates(config.load()));
+    ipcMain.handle('config:get', () => ({ ...config.load(), configPath: config.configPath() }));
+    ipcMain.handle('config:save', (_e, cfg) => {
+      const saved = config.save(cfg);
+      velaApi.syncBaseUrl();
+      notify('service:state', { type: 'theme:changed', theme: saved.theme });
+      send('services:refresh');
+      return saved;
+    });
+    ipcMain.handle('service:open', (_e, id) => openService(id));
+    ipcMain.handle('native:open', (_e, page) => {
+      const allowed = ['connect.html', 'chart-code.html', 'picture-connector.html', 'taiwan-year.html', 'velapt.html', 'media-converter.html'];
+      if (!allowed.includes(page)) return;
+      viewManager.openLocal(page.replace('.html', ''), `${FEATURES_BASE}/${page}`);
+      if (page === 'media-converter.html') modelCache.prefetch();
+    });
+    ipcMain.handle('nav:back', () => viewManager.navBack());
+    ipcMain.handle('nav:home', () => viewManager.goHome());
+    ipcMain.handle('config:reveal', () => shell.showItemInFolder(config.configPath()));
+    ipcMain.handle('dialog:locate', async () => {
+      const result = await dialog.showOpenDialog(win, {
+        title: 'Select the executable',
+        properties: ['openFile'],
+        filters: [{ name: 'Executable', extensions: ['exe'] }],
+      });
+      return result.canceled ? null : result.filePaths[0];
+    });
+    velaApi.registerIpc({ notify });
+    mediaEngine.registerIpc({ notify, getWindow: () => win });
+    imageEngine.registerIpc();
+    modelCache.registerIpc({ notify });
+  }
+
+  async function runSmoke() {
+    const results = [];
+    const check = (name, ok, detail = '') => results.push(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`);
+    try {
+      const cfg = config.load();
+      const list = services.listWithStates(cfg);
+      check('services:list returns 7 services', list.length === 7);
+      check('coming-soon states correct', list.filter((s) => s.state === 'coming-soon').length === 0);
+      check('native cards available', list.find((s) => s.id === 'chart-code').state === 'available'
+        && list.find((s) => s.id === 'picture-connector').state === 'available');
+      check('media-converter card available', list.find((s) => s.id === 'media-converter').state === 'available');
+      check('velapt card available', list.find((s) => s.id === 'velapt').state === 'available');
+      check('taiwan-year card available', list.find((s) => s.id === 'taiwan-year').state === 'available');
+      check('config round-trip', !!config.save(config.load()).velaBaseUrl);
+      const homeState = await win.webContents.executeJavaScript(`({
+        signIn: !!document.getElementById('signInBtn'),
+        chip: !!document.getElementById('accountChip'),
+      })`);
+      check('home sign-in control renders', homeState.signIn && homeState.chip, JSON.stringify(homeState));
+      check('tasklist probe works (explorer.exe running)', await externalApps.isRunning('explorer.exe'));
+      viewManager.open('smoke', 'data:text/html,<h1>smoke</h1>', false);
+      check('view opens', viewManager.isOpen());
+      viewManager.goHome();
+      check('view closes on home', !viewManager.isOpen());
+      const wc = await new Promise((resolve) => {
+        viewManager.openLocal('smoke-native', `${FEATURES_BASE}/chart-code.html`);
+        const webContents = viewManager.getView().webContents;
+        webContents.once('did-finish-load', () => resolve(webContents));
+        setTimeout(() => resolve(webContents), 5000);
+      });
+      const nativeText = await wc.executeJavaScript('document.body.innerText');
+      check('native chart-code page loads', nativeText.includes('Chart Code'), nativeText.slice(0, 60));
+      viewManager.goHome();
+      const pcWc = await new Promise((resolve) => {
+        viewManager.openLocal('smoke-pc', `${FEATURES_BASE}/picture-connector.html`);
+        const webContents = viewManager.getView().webContents;
+        webContents.once('did-finish-load', () => resolve(webContents));
+        setTimeout(() => resolve(webContents), 5000);
+      });
+      const pcResult = await pcWc.executeJavaScript(`(async () => {
+        const makeFile = async (color, name) => {
+          const c = document.createElement('canvas'); c.width = 120; c.height = 80;
+          const ctx = c.getContext('2d'); ctx.fillStyle = color; ctx.fillRect(0, 0, 120, 80);
+          const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+          return new File([blob], name, { type: 'image/png' });
+        };
+        const files = [await makeFile('#ff0000', 'a.png'), await makeFile('#00ff00', 'b.png')];
+        const dt = new DataTransfer();
+        files.forEach((f) => dt.items.add(f));
+        const ev = new Event('paste', { bubbles: true, cancelable: true });
+        Object.defineProperty(ev, 'clipboardData', { value: dt });
+        window.dispatchEvent(ev);
+        await new Promise((r) => setTimeout(r, 3000));
+        const canvas = document.querySelector('canvas');
+        return {
+          hasCanvas: !!canvas,
+          w: canvas ? canvas.width : 0,
+          h: canvas ? canvas.height : 0,
+          thumbs: document.querySelectorAll('img[src^="blob:"]').length,
+        };
+      })()`);
+      check('picture-connector composites pasted images', pcResult.hasCanvas && pcResult.w > 0 && pcResult.thumbs === 2, JSON.stringify(pcResult));
+      viewManager.goHome();
+
+      // Chart Code editor E2E with stubbed storage/IPC (no network needed).
+      const stubCalls = [];
+      const chart = (id, title, code) => ({ id, title, mmd_code: code, protected: false, created_at: '2026-11-01T00:00:00Z', updated_at: '2026-11-02T00:00:00Z' });
+      const sample = 'flowchart TD\n  A[Start] --> B{Retry?}\n  B -->|Yes| C[Wait]\n  B -->|No| D[Fail]';
+      ipcMain.removeHandler('charts:list');
+      ipcMain.handle('charts:list', () => ({ ok: true, data: [chart(1, 'Payment Retry Logic', sample)] }));
+      ipcMain.removeHandler('charts:update');
+      ipcMain.handle('charts:update', (_e, id, changes) => {
+        stubCalls.push({ id, ...changes });
+        return { ok: true, data: chart(id, changes.title, changes.mmd_code) };
+      });
+      ipcMain.removeHandler('files:save');
+      ipcMain.handle('files:save', (_e, { defaultName }) => {
+        stubCalls.push({ saved: defaultName });
+        return `C:\\smoke\\${defaultName}`;
+      });
+      const ccWc = await new Promise((resolve) => {
+        viewManager.openLocal('smoke-cc', `${FEATURES_BASE}/chart-code.html`);
+        const webContents = viewManager.getView().webContents;
+        webContents.once('did-finish-load', () => resolve(webContents));
+        setTimeout(() => resolve(webContents), 5000);
+      });
+      const ccResult = await ccWc.executeJavaScript(`(async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        const out = {};
+        await sleep(1500); // let React mount the list
+        const card = document.querySelector('.card');
+        if (!card) return { error: 'no chart card in list' };
+        card.click();
+        await sleep(2500); // mermaid render
+        out.renderedSvg = !!document.querySelector('.mermaid-host svg');
+        const nodes = document.querySelectorAll('.mermaid-host g.node');
+        out.nodeCount = nodes.length;
+        if (nodes[1]) nodes[1].dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        await sleep(600);
+        out.toolbarShown = !!document.querySelector('.node-style-toolbar');
+        const bold = [...document.querySelectorAll('.node-style-toolbar div')].find((d) => d.textContent === 'B' && d.style && d.style.width === '26px');
+        if (bold) bold.click();
+        await sleep(600);
+        out.styleLine = ((document.querySelector('textarea') || {}).value || '').split('\\n').find((l) => l.includes('style B')) || '';
+        const buttons = [...document.querySelectorAll('button')];
+        const exportBtn = buttons.find((b) => b.textContent.includes('Export'));
+        if (exportBtn) exportBtn.click();
+        await sleep(400);
+        const svgItem = [...document.querySelectorAll('div')].find((d) => d.textContent === 'SVG' && d.style && d.style.cursor === 'pointer');
+        if (svgItem) svgItem.click();
+        await sleep(1500);
+        out.toast = [...document.querySelectorAll('.toast')].map((t) => t.textContent).join(' | ');
+        const saveBtn = buttons.find((b) => b.textContent.includes('Save'));
+        if (saveBtn) saveBtn.click();
+        await sleep(600);
+        out.saveBadge = [...document.querySelectorAll('.badge')].map((b) => b.textContent).join(' | ');
+        return out;
+      })()`);
+      check('chart-code renders mermaid in editor', ccResult.renderedSvg && ccResult.nodeCount >= 3, JSON.stringify(ccResult).slice(0, 120));
+      check('chart-code node style write-back', ccResult.toolbarShown && ccResult.styleLine.includes('font-weight:bold'), ccResult.styleLine);
+      check('chart-code SVG export saves file', (ccResult.toast || '').includes('Saved') && stubCalls.some((c) => c.saved && c.saved.endsWith('.svg')), ccResult.toast);
+      check('chart-code save clears dirty state', (ccResult.saveBadge || '').includes('All changes saved') && stubCalls.some((c) => c.mmd_code !== undefined), ccResult.saveBadge);
+      viewManager.goHome();
+
+      // VelaPTP built-in screen E2E: samples -> crop -> export via stubbed files:save.
+      const vpWc = await new Promise((resolve) => {
+        viewManager.openLocal('smoke-velapt', `${FEATURES_BASE}/velapt.html`);
+        const webContents = viewManager.getView().webContents;
+        webContents.once('did-finish-load', () => resolve(webContents));
+        setTimeout(() => resolve(webContents), 5000);
+      });
+      const vpStart = await vpWc.executeJavaScript(`(async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        await sleep(1500); // let React mount
+        const out = {};
+        const sampleBtn = document.getElementById('sampleBtn');
+        if (!sampleBtn) return { error: 'no sample button' };
+        sampleBtn.click();
+        await sleep(1800);
+        out.thumbs = document.querySelectorAll('.thumb').length;
+        const cont = document.getElementById('primaryBtn');
+        if (cont && !cont.disabled) cont.click(); // Continue -> crop step
+        await sleep(700);
+        const wrap = document.getElementById('photoWrap');
+        out.cropStage = !!wrap && wrap.style.display !== 'none';
+        out.wrapW = wrap ? Math.round(wrap.getBoundingClientRect().width) : 0;
+        out.canvasW = (document.getElementById('photoCanvas') || {}).width || 0;
+        out.uploadHidden = document.getElementById('stageUpload').classList.contains('hidden');
+        out.readout = (document.getElementById('cropReadout') || {}).textContent || '';
+        const autoBtn = document.getElementById('autoBtn');
+        if (autoBtn) autoBtn.click();
+        await sleep(500);
+        for (let i = 0; i < 2; i++) { // keep the export fast: one page
+          const del = document.querySelector('.thumb .tools .del');
+          if (del) del.click();
+          await sleep(350);
+        }
+        for (let i = 0; i < 8; i++) {
+          const btn = document.getElementById('primaryBtn');
+          if (!btn || btn.disabled) break;
+          btn.click();
+          await sleep(500);
+          const bar = document.getElementById('barKicker');
+          if (bar && bar.textContent.includes('Step 3')) break;
+        }
+        out.step3 = (document.getElementById('barKicker') || {}).textContent || '';
+        out.filenameVisible = (document.getElementById('fileField') || {}).style.display !== 'none';
+        const btn = document.getElementById('primaryBtn');
+        if (btn && !btn.disabled) btn.click(); // Export PDF
+        return out;
+      })()`);
+      let pdfSaved = null;
+      for (let i = 0; i < 40; i++) {
+        pdfSaved = stubCalls.find((c) => c.saved && c.saved.endsWith('.pdf'));
+        if (pdfSaved) break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      check('velapt samples + crop stage render', vpStart.thumbs === 3 && vpStart.cropStage && vpStart.wrapW > 300 && vpStart.canvasW > 0 && vpStart.uploadHidden && /[0-9]+ × [0-9]+ PX/.test(vpStart.readout), JSON.stringify(vpStart).slice(0, 140));
+      check('velapt wizard reaches export step', (vpStart.step3 || '').includes('Step 3') && vpStart.filenameVisible, vpStart.step3);
+      check('velapt export saves PDF via native dialog', !!pdfSaved, pdfSaved ? pdfSaved.saved : 'no files:save call');
+      await vpWc.executeJavaScript('history.back(); true');
+      await new Promise((r) => setTimeout(r, 700));
+      const backStep = await vpWc.executeJavaScript('((document.getElementById("barKicker") || {}).textContent || "")');
+      check('velapt back-button steps wizard back', backStep.includes('Step 2'), backStep);
+      viewManager.goHome();
+
+      // Paste intake E2E: a clipboard image loads as a photo.
+      const pasteWc = await new Promise((resolve) => {
+        viewManager.openLocal('smoke-velapt-paste', `${FEATURES_BASE}/velapt.html`);
+        const webContents = viewManager.getView().webContents;
+        webContents.once('did-finish-load', () => resolve(webContents));
+        setTimeout(() => resolve(webContents), 5000);
+      });
+      const pasteResult = await pasteWc.executeJavaScript(`(async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        await sleep(1200); // let React mount
+        const c = document.createElement('canvas'); c.width = 200; c.height = 280;
+        const ctx = c.getContext('2d'); ctx.fillStyle = '#f7f3ea'; ctx.fillRect(0, 0, 200, 280);
+        const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+        const dt = new DataTransfer();
+        dt.items.add(new File([blob], 'pasted.png', { type: 'image/png' }));
+        const ev = new Event('paste', { bubbles: true, cancelable: true });
+        Object.defineProperty(ev, 'clipboardData', { value: dt });
+        window.dispatchEvent(ev);
+        await sleep(1500);
+        return {
+          thumbs: document.querySelectorAll('.thumb').length,
+          count: (document.querySelector('.rail-count') || {}).textContent || '',
+          img: (document.querySelector('.thumb img') || {}).src ? 'yes' : 'no',
+        };
+      })()`);
+      check('velapt paste loads image from clipboard', pasteResult.thumbs === 1 && pasteResult.count === '01' && pasteResult.img === 'yes', JSON.stringify(pasteResult));
+      viewManager.goHome();
+
+      // Taiwan Year Calculator E2E: both conversion directions.
+      const tyWc = await new Promise((resolve) => {
+        viewManager.openLocal('smoke-taiwan', `${FEATURES_BASE}/taiwan-year.html`);
+        const webContents = viewManager.getView().webContents;
+        webContents.once('did-finish-load', () => resolve(webContents));
+        setTimeout(() => resolve(webContents), 5000);
+      });
+      const tyResult = await tyWc.executeJavaScript(`(async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        await sleep(1200); // let React mount
+        const setVal = (el, v) => {
+          const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+          setter.call(el, v);
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+        };
+        const out = {};
+        const greg = document.getElementById('gregorianInput');
+        const mng = document.getElementById('minguoInput');
+        if (!greg || !mng) return { error: 'inputs missing' };
+        setVal(greg, '2025');
+        await sleep(300);
+        out.toMinguo = (document.getElementById('minguoResult') || {}).textContent || '';
+        setVal(greg, '');
+        await sleep(150);
+        setVal(mng, '114');
+        await sleep(300);
+        out.toGregorian = (document.getElementById('gregorianResult') || {}).textContent || '';
+        out.clearedGregorian = greg.value === '';
+        return out;
+      })()`);
+      check('taiwan-year converts Gregorian to Minguo', tyResult.toMinguo.includes('Year 114'), JSON.stringify(tyResult).slice(0, 120));
+      check('taiwan-year converts Minguo to Gregorian', tyResult.toGregorian.includes('Year 2025') && tyResult.clearedGregorian, JSON.stringify(tyResult).slice(0, 120));
+      viewManager.goHome();
+
+      // Media Converter native engine E2E: real ffmpeg through the preload IPC.
+      const fs = require('fs');
+      const os = require('os');
+      const { spawn } = require('child_process');
+      const mediaTmp = path.join(os.tmpdir(), 'vela-media-smoke');
+      fs.rmSync(mediaTmp, { recursive: true, force: true });
+      fs.mkdirSync(mediaTmp, { recursive: true });
+      const ffmpegBin = mediaEngine.resolveFfmpeg();
+      check('media ffmpeg binary resolves', !!ffmpegBin && fs.existsSync(ffmpegBin), ffmpegBin || 'missing');
+      const runFf = (args) => new Promise((resolve) => {
+        const proc = spawn(ffmpegBin, args, { windowsHide: true });
+        proc.on('close', (code) => resolve(code));
+        proc.on('error', () => resolve(-1));
+      });
+      const clipA = path.join(mediaTmp, 'clip-a.mp4');
+      const clipB = path.join(mediaTmp, 'clip-b.webm');
+      const clipLong = path.join(mediaTmp, 'clip-long.mp4');
+      await runFf(['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=320x240:rate=10:duration=3', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=3', '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'aac', '-shortest', clipA]);
+      await runFf(['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=320x240:rate=10:duration=2', '-f', 'lavfi', '-i', 'sine=frequency=660:duration=2', '-c:v', 'libvpx', '-b:v', '300k', '-c:a', 'libvorbis', '-shortest', clipB]);
+      await runFf(['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=640x480:rate=15:duration=30', '-c:v', 'libx264', '-preset', 'ultrafast', '-an', clipLong]);
+      check('media fixtures generated', fs.existsSync(clipA) && fs.existsSync(clipB) && fs.existsSync(clipLong));
+
+      const mcWc = await new Promise((resolve) => {
+        viewManager.openLocal('smoke-mc', `${FEATURES_BASE}/media-converter.html`);
+        const webContents = viewManager.getView().webContents;
+        webContents.once('did-finish-load', () => resolve(webContents));
+        setTimeout(() => resolve(webContents), 5000);
+      });
+      await new Promise((r) => setTimeout(r, 1500));
+      const mcHome = await mcWc.executeJavaScript(`({
+        cards: document.querySelectorAll('main a[href^="#/"]').length,
+        bridge: !!window.launcher?.media,
+      })`);
+      check('media-converter home renders 6 tools', mcHome.cards === 6 && mcHome.bridge, JSON.stringify(mcHome));
+      const probe = await mcWc.executeJavaScript('window.launcher.media.ffmpegProbe()');
+      check('media ffmpeg probe via preload', probe.ok && /ffmpeg version/.test(probe.version || ''), probe.version || probe.error);
+
+      const engineOut = await mcWc.executeJavaScript(`(async () => {
+        const media = window.launcher.media;
+        const dir = ${JSON.stringify(mediaTmp)};
+        const log = [];
+        const unsub = media.onJobProgress((p) => log.push(p));
+        const out = {};
+        out.remux = await media.convert({ jobId: 'smoke-remux', outputDir: dir, jobs: [
+          { inputPath: ${JSON.stringify(clipA)}, outputName: 'out-remux.mov', kind: 'video', format: 'mov', mode: 'remux' },
+        ] });
+        out.fallback = await media.convert({ jobId: 'smoke-fallback', outputDir: dir, jobs: [
+          { inputPath: ${JSON.stringify(clipB)}, outputName: 'out-fallback.mp4', kind: 'video', format: 'mp4', mode: 'remux' },
+        ] });
+        out.audio = await media.convert({ jobId: 'smoke-audio', outputDir: dir, jobs: [
+          { inputPath: ${JSON.stringify(clipA)}, outputName: 'out-a.mp3', kind: 'audio', format: 'mp3', mode: 'extract' },
+          { inputPath: ${JSON.stringify(clipB)}, outputName: 'out-b.mp3', kind: 'audio', format: 'mp3', mode: 'extract' },
+        ] });
+        unsub();
+        const ratios = (id) => log.filter((p) => p.jobId === id).map((p) => p.ratio);
+        out.remuxRatios = ratios('smoke-remux');
+        out.fallbackRatios = ratios('smoke-fallback');
+        return out;
+      })()`);
+      const brand = (file) => { try { return fs.readFileSync(file).slice(8, 12).toString('latin1'); } catch { return ''; } };
+      check('video remux mp4->mov succeeds', engineOut.remux.ok === true && brand(path.join(mediaTmp, 'out-remux.mov')) === 'qt  ', JSON.stringify(engineOut.remux).slice(0, 100));
+      check('remux emits start + end progress', engineOut.remuxRatios.includes(-1) && engineOut.remuxRatios.includes(1), JSON.stringify(engineOut.remuxRatios));
+      check('incompatible remux falls back to re-encode', engineOut.fallback.ok === true && brand(path.join(mediaTmp, 'out-fallback.mp4')) === 'isom', JSON.stringify(engineOut.fallback).slice(0, 100));
+      check('re-encode emits fractional progress', engineOut.fallbackRatios.some((r) => r > 0 && r < 1) && engineOut.fallbackRatios.includes(1), JSON.stringify(engineOut.fallbackRatios).slice(0, 100));
+      check('batch audio extraction saves mp3s', engineOut.audio.ok === true && fs.existsSync(path.join(mediaTmp, 'out-a.mp3')) && fs.existsSync(path.join(mediaTmp, 'out-b.mp3')), JSON.stringify(engineOut.audio).slice(0, 100));
+
+      const cancelOut = await mcWc.executeJavaScript(`(async () => {
+        const media = window.launcher.media;
+        const pending = media.convert({ jobId: 'smoke-cancel', outputDir: ${JSON.stringify(mediaTmp)}, jobs: [
+          { inputPath: ${JSON.stringify(clipLong)}, outputName: 'out-cancel.webm', kind: 'video', format: 'webm', mode: 'reencode' },
+        ] });
+        await new Promise((r) => setTimeout(r, 900));
+        const ack = await media.cancelJob('smoke-cancel');
+        const result = await pending;
+        return { ack, result };
+      })()`);
+      check('cancel stops job and cleans output', cancelOut.ack.ok === true && cancelOut.result.canceled === true && cancelOut.result.ok === false && !fs.existsSync(path.join(mediaTmp, 'out-cancel.webm')), JSON.stringify(cancelOut.result).slice(0, 120));
+
+      // Video tool UI: engine-ready state, then a real drag-drop via CDP if supported.
+      await mcWc.executeJavaScript(`location.hash = '#/video'; true`);
+      await new Promise((r) => setTimeout(r, 900));
+      const videoUi = await mcWc.executeJavaScript(`({
+        ready: [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Convert and save'),
+        formats: [...document.getElementById('video-output-format').options].map((o) => o.value).join(','),
+      })`);
+      check('video tool mounts engine-ready', videoUi.ready && videoUi.formats === 'mp4,mov,avi,mkv,webm', JSON.stringify(videoUi));
+
+      const origSaveDialog = dialog.showSaveDialog;
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: path.join(mediaTmp, 'ui-out.mov') });
+      await mcWc.executeJavaScript(`window.__droppedFiles = [];
+        document.addEventListener('drop', (e) => { window.__droppedFiles = [...(e.dataTransfer?.files || [])]; }, { capture: true, once: true });
+        true`);
+      let uiDropWorked = false;
+      const dbg = mcWc.debugger;
+      try {
+        dbg.attach('1.3');
+        await dbg.sendCommand('Input.setInterceptDrags', { enabled: true });
+        const rect = await mcWc.executeJavaScript(`(() => {
+          const el = document.querySelector('input[type="file"]').parentElement;
+          const r = el.getBoundingClientRect();
+          return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        })()`);
+        const dragData = { items: [{ mimeType: 'video/mp4', data: '' }], files: [clipA], dragOperationsMask: 1 };
+        await dbg.sendCommand('Input.dispatchDragEvent', { type: 'dragEnter', x: rect.x, y: rect.y, data: dragData });
+        await dbg.sendCommand('Input.dispatchDragEvent', { type: 'dragOver', x: rect.x, y: rect.y, data: dragData });
+        await dbg.sendCommand('Input.dispatchDragEvent', { type: 'drop', x: rect.x, y: rect.y, data: dragData });
+      } catch {
+        // CDP drag injection unsupported in this build; synthetic-drop fallback below.
+      } finally {
+        try { dbg.detach(); } catch { /* not attached */ }
+      }
+      await new Promise((r) => setTimeout(r, 800));
+      uiDropWorked = await mcWc.executeJavaScript(`document.body.innerText.includes('clip-a.mp4')`);
+
+      if (uiDropWorked) {
+        const dropPath = await mcWc.executeJavaScript(`window.__droppedFiles.length ? window.launcher.media.getPathForFile(window.__droppedFiles[0]) : 'no-file'`);
+        check('CDP drop exposes native file path', dropPath === clipA, dropPath);
+        const uiResult = await mcWc.executeJavaScript(`(async () => {
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+          const select = document.getElementById('video-output-format');
+          const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
+          setter.call(select, 'mov');
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+          await sleep(200);
+          const progressSeen = [];
+          const unsub = window.launcher.media.onJobProgress((p) => progressSeen.push(p.ratio));
+          const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Convert and save');
+          btn.click();
+          let saved = false;
+          for (let i = 0; i < 40; i++) {
+            await sleep(500);
+            if (document.body.innerText.includes('Saved ui-out.mov.')) { saved = true; break; }
+          }
+          unsub();
+          return {
+            saved,
+            progressSeen,
+            revealBtn: [...document.querySelectorAll('button')].some((b) => b.textContent.includes('Show in folder')),
+            alerts: [...document.querySelectorAll('[role="alert"],[role="status"]')].map((a) => a.textContent).join(' | '),
+          };
+        })()`);
+        check('video UI drag-drop -> save round-trip', uiResult.saved && fs.existsSync(path.join(mediaTmp, 'ui-out.mov')) && uiResult.revealBtn, JSON.stringify({ alerts: uiResult.alerts, saved: uiResult.saved, progress: uiResult.progressSeen.length }).slice(0, 220));
+        check('video UI receives job progress', uiResult.progressSeen.length > 0, JSON.stringify(uiResult.progressSeen));
+      } else {
+        const fallbackUi = await mcWc.executeJavaScript(`(async () => {
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+          const dt = new DataTransfer();
+          dt.items.add(new File([new Uint8Array(16)], 'clip-a.mp4', { type: 'video/mp4' }));
+          const zone = document.querySelector('input[type="file"]').parentElement;
+          zone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+          await sleep(600);
+          const listed = document.body.innerText.includes('clip-a.mp4');
+          const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Convert and save');
+          if (btn && !btn.disabled) btn.click();
+          await sleep(800);
+          return { listed, pathError: document.body.innerText.includes('read the file path') };
+        })()`);
+        check('video UI drop lists file (synthetic)', fallbackUi.listed, JSON.stringify(fallbackUi));
+        check('video UI reports missing native path gracefully', fallbackUi.pathError, JSON.stringify(fallbackUi));
+      }
+      dialog.showSaveDialog = origSaveDialog;
+
+      await mcWc.executeJavaScript(`location.hash = '#/video-to-audio'; true`);
+      await new Promise((r) => setTimeout(r, 700));
+      const audioUi = await mcWc.executeJavaScript(`({
+        ready: [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Extract and save'),
+        formats: [...document.getElementById('audio-output-format').options].map((o) => o.value).join(','),
+      })`);
+      check('video-to-audio tool mounts', audioUi.ready && audioUi.formats === 'mp3,wav,m4a,ogg,flac,opus', JSON.stringify(audioUi));
+
+      // Image engine E2E: sharp convert/compress through the preload IPC, plus
+      // the blob download path (will-download -> saved to disk).
+      const sharp = require('sharp');
+      const imgSrc = await sharp({ create: { width: 480, height: 320, channels: 3, background: '#3a7bd5' } }).jpeg({ quality: 95 }).toBuffer();
+      const tiffBuf = await sharp(imgSrc).tiff().toBuffer();
+      const pngBuf = await sharp(imgSrc).png().toBuffer();
+      const srcGifPath = path.join(mediaTmp, 'src.gif');
+      const srcBmpPath = path.join(mediaTmp, 'src.bmp');
+      await runFf(['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=480x320:rate=10:duration=0.1', '-frames:v', 1, srcGifPath]);
+      await runFf(['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=64x64:rate=10:duration=0.1', '-frames:v', 1, srcBmpPath]);
+      const gifBuf = fs.readFileSync(srcGifPath);
+      const bmpBuf = fs.readFileSync(srcBmpPath);
+      const heicBuf = fs.readFileSync(process.env.VELA_HEIC_FIXTURE || path.join(__dirname, '..', '..', 'scripts', 'fixtures', 'sample.heic'));
+
+      const imgOut = await mcWc.executeJavaScript(`(async () => {
+        const media = window.launcher.media;
+        const out = {};
+        out.tiffToJpg = await media.imageConvert({ inputBase64: '${tiffBuf.toString('base64')}', inputFormat: 'tiff', outputFormat: 'jpg' });
+        out.heicToWebp = await media.imageConvert({ inputBase64: '${heicBuf.toString('base64')}', inputFormat: 'heic', outputFormat: 'webp' });
+        out.pngToGif = await media.imageConvert({ inputBase64: '${pngBuf.toString('base64')}', inputFormat: 'png', outputFormat: 'gif' });
+        out.bmpToPng = await media.imageConvert({ inputBase64: '${bmpBuf.toString('base64')}', inputFormat: 'bmp', outputFormat: 'png' });
+        out.compressGif = await media.imageCompress({ inputBase64: '${gifBuf.toString('base64')}', inputFormat: 'gif', targetBytes: 20000, format: 'gif' });
+        out.compressHeic = await media.imageCompress({ inputBase64: '${heicBuf.toString('base64')}', inputFormat: 'heic', targetBytes: 100000, format: 'keep' });
+        return out;
+      })()`);
+      const magic = (b64, start, len) => Buffer.from(b64 || '', 'base64').slice(start, start + len).toString('latin1');
+      const byteLen = (b64) => Buffer.from(b64 || '', 'base64').length;
+      const jpgMeta = imgOut.tiffToJpg.ok ? await sharp(Buffer.from(imgOut.tiffToJpg.dataBase64, 'base64')).metadata() : {};
+      check('image convert TIFF -> JPG keeps dimensions', imgOut.tiffToJpg.ok && magic(imgOut.tiffToJpg.dataBase64, 0, 2) === '\xff\xd8' && jpgMeta.width === 480 && jpgMeta.height === 320, JSON.stringify({ ok: imgOut.tiffToJpg.ok, err: imgOut.tiffToJpg.error, w: jpgMeta.width }));
+      const webpMeta = imgOut.heicToWebp.ok ? await sharp(Buffer.from(imgOut.heicToWebp.dataBase64, 'base64')).metadata() : {};
+      check('image convert HEIC -> WebP (heic-convert)', imgOut.heicToWebp.ok && magic(imgOut.heicToWebp.dataBase64, 0, 4) === 'RIFF' && magic(imgOut.heicToWebp.dataBase64, 8, 4) === 'WEBP' && webpMeta.width === 1440, JSON.stringify({ ok: imgOut.heicToWebp.ok, err: imgOut.heicToWebp.error, w: webpMeta.width }));
+      check('image convert PNG -> GIF', imgOut.pngToGif.ok && magic(imgOut.pngToGif.dataBase64, 0, 4) === 'GIF8', JSON.stringify({ ok: imgOut.pngToGif.ok, err: imgOut.pngToGif.error }));
+      check('image convert BMP -> PNG', imgOut.bmpToPng.ok && magic(imgOut.bmpToPng.dataBase64, 1, 3) === 'PNG', JSON.stringify({ ok: imgOut.bmpToPng.ok, err: imgOut.bmpToPng.error }));
+      check('image compress GIF hits byte target as GIF', imgOut.compressGif.ok && imgOut.compressGif.extension === 'gif' && byteLen(imgOut.compressGif.dataBase64) < 20000 && magic(imgOut.compressGif.dataBase64, 0, 4) === 'GIF8', JSON.stringify({ ok: imgOut.compressGif.ok, ext: imgOut.compressGif.extension, bytes: byteLen(imgOut.compressGif.dataBase64), err: imgOut.compressGif.error }));
+      check('image compress HEIC keep -> JPG under target', imgOut.compressHeic.ok && imgOut.compressHeic.extension === 'jpg' && byteLen(imgOut.compressHeic.dataBase64) < 100000, JSON.stringify({ ok: imgOut.compressHeic.ok, ext: imgOut.compressHeic.extension, bytes: byteLen(imgOut.compressHeic.dataBase64), err: imgOut.compressHeic.error }));
+
+      // Route smoke downloads into the temp dir instead of the real Downloads.
+      const { session } = require('electron');
+      session.defaultSession.removeAllListeners('will-download');
+      session.defaultSession.on('will-download', (_e, item) => {
+        item.setSavePath(path.join(mediaTmp, item.getFilename()));
+      });
+
+      await mcWc.executeJavaScript(`location.hash = '#/convert'; true`);
+      await new Promise((r) => setTimeout(r, 700));
+      const convUi = await mcWc.executeJavaScript(`(async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        const bytes = Uint8Array.from(atob('${tiffBuf.toString('base64')}'), (c) => c.charCodeAt(0));
+        const dt = new DataTransfer();
+        dt.items.add(new File([bytes], 'fixture.tiff', { type: 'image/tiff' }));
+        const zone = document.querySelector('input[type="file"]').parentElement;
+        zone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+        await sleep(600);
+        const select = document.getElementById('output-format');
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
+        setter.call(select, 'jpg');
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        await sleep(200);
+        const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Convert and download');
+        btn.click();
+        let done = false;
+        for (let i = 0; i < 30; i++) {
+          await sleep(500);
+          if (document.body.innerText.includes('Downloaded fixture.jpg.')) { done = true; break; }
+        }
+        return { done, alerts: [...document.querySelectorAll('[role="alert"],[role="status"]')].map((a) => a.textContent).join(' | ') };
+      })()`);
+      check('convert UI TIFF -> JPG downloads via main engine', convUi.done && fs.existsSync(path.join(mediaTmp, 'fixture.jpg')), JSON.stringify(convUi).slice(0, 180));
+
+      await mcWc.executeJavaScript(`location.hash = '#/compress'; true`);
+      await new Promise((r) => setTimeout(r, 700));
+      const compUi = await mcWc.executeJavaScript(`(async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        const bytes = Uint8Array.from(atob('${gifBuf.toString('base64')}'), (c) => c.charCodeAt(0));
+        const dt = new DataTransfer();
+        dt.items.add(new File([bytes], 'fixture.gif', { type: 'image/gif' }));
+        const zone = document.querySelector('input[type="file"]').parentElement;
+        zone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+        await sleep(600);
+        const selectSetter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
+        const formatSelect = document.getElementById('compress-output-format');
+        selectSetter.call(formatSelect, 'gif');
+        formatSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        const unitSelect = document.querySelector('select[aria-label="Size unit"]');
+        selectSetter.call(unitSelect, 'kb');
+        unitSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        await sleep(200);
+        const sizeInput = document.getElementById('compress-target-size');
+        const inputSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        inputSetter.call(sizeInput, '5');
+        sizeInput.dispatchEvent(new Event('input', { bubbles: true }));
+        await sleep(200);
+        const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Compress and download');
+        btn.click();
+        let done = false;
+        for (let i = 0; i < 60; i++) {
+          await sleep(500);
+          if (document.body.innerText.includes('Downloaded fixture.gif')) { done = true; break; }
+        }
+        return { done, alerts: [...document.querySelectorAll('[role="alert"],[role="status"]')].map((a) => a.textContent).join(' | ') };
+      })()`);
+      const compressedGifOk = fs.existsSync(path.join(mediaTmp, 'fixture.gif')) && fs.statSync(path.join(mediaTmp, 'fixture.gif')).size < 5120;
+      check('compress UI GIF -> GIF hits 5 KB target', compUi.done && compressedGifOk, JSON.stringify(compUi).slice(0, 180));
+
+      // Background removal: tier-1 model download into userData, app://models
+      // serving, then real ONNX inference through the tool UI (fast mode).
+      const modelsRun = await mcWc.executeJavaScript(`(async () => {
+        const media = window.launcher.media;
+        const events = [];
+        const unsub = media.onModelsProgress((s) => events.push({ dl: s.downloading, ready: s.baseReady, d: s.downloaded }));
+        const status = await media.ensureModels('base');
+        await new Promise((r) => setTimeout(r, 300));
+        unsub();
+        return { status, count: events.length, sawDownloading: events.some((e) => e.dl), sawReady: events.some((e) => e.ready) };
+      })()`);
+      check('tier-1 models download + cache', modelsRun.status.baseReady === true && !modelsRun.status.error, JSON.stringify(modelsRun.status).slice(0, 160));
+      check('models progress events emitted', modelsRun.count > 0 && modelsRun.sawDownloading && modelsRun.sawReady, JSON.stringify({ count: modelsRun.count, dl: modelsRun.sawDownloading, ready: modelsRun.sawReady }));
+      const modelDir = path.join(app.getPath('userData'), 'models', 'background-removal');
+      const cachedBytes = fs.readdirSync(modelDir).reduce((sum, name) => {
+        try { return sum + fs.statSync(path.join(modelDir, name)).size; } catch { return sum; }
+      }, 0);
+      check('model cache mirrored to userData', fs.existsSync(path.join(modelDir, 'resources.json')) && cachedBytes > 56e6, `${(cachedBytes / 1e6).toFixed(1)} MB`);
+      const servedModels = await mcWc.executeJavaScript(`(async () => {
+        const res = await fetch('app://models/background-removal/resources.json');
+        const map = await res.json();
+        const guard = await fetch('app://models/%2e%2e/config.json');
+        const guardBody = await guard.text();
+        return { ok: res.ok, hasModel: !!map['/models/isnet_quint8'], guardStatus: guard.status, leaked: guardBody.includes('velaBaseUrl') };
+      })()`);
+      check('app://models serves manifest + blocks traversal', servedModels.ok && servedModels.hasModel && (servedModels.guardStatus === 403 || servedModels.guardStatus === 404) && !servedModels.leaked, JSON.stringify(servedModels));
+      const revalidateT0 = Date.now();
+      const revalidated = await mcWc.executeJavaScript(`window.launcher.media.ensureModels('base')`);
+      check('cached models re-validate without download', revalidated.baseReady === true && Date.now() - revalidateT0 < 3000, `${Date.now() - revalidateT0} ms`);
+
+      await mcWc.executeJavaScript(`location.hash = '#/remove-background'; true`);
+      await new Promise((r) => setTimeout(r, 900));
+      const rbMount = await mcWc.executeJavaScript(`({
+        ready: document.body.innerText.includes('Models ready'),
+        dropzone: document.body.innerText.includes('Drag and drop an image here'),
+      })`);
+      check('remove-background tool mounts models-ready', rbMount.ready && rbMount.dropzone, JSON.stringify(rbMount));
+      const rbResult = await mcWc.executeJavaScript(`(async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 256, 256);
+        ctx.fillStyle = '#d94f30'; ctx.fillRect(68, 68, 120, 120);
+        const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+        const dt = new DataTransfer();
+        dt.items.add(new File([blob], 'subject.png', { type: 'image/png' }));
+        const zone = document.querySelector('input[type="file"]').parentElement;
+        zone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+        await sleep(600);
+        const fastBtn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Fast');
+        fastBtn.click();
+        await sleep(200);
+        const runBtn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Remove background');
+        if (!runBtn || runBtn.disabled) return { error: 'run button missing or gated', listed: document.body.innerText.includes('subject.png') };
+        runBtn.click();
+        let done = false;
+        for (let i = 0; i < 150; i++) {
+          await sleep(1000);
+          if ([...document.querySelectorAll('button')].some((b) => b.textContent.includes('Download transparent PNG'))) { done = true; break; }
+        }
+        if (!done) return { error: 'inference timed out', text: document.body.innerText.slice(-300) };
+        const img = document.querySelector('img[alt="Result"]');
+        const rc = document.createElement('canvas'); rc.width = img.naturalWidth; rc.height = img.naturalHeight;
+        const rctx = rc.getContext('2d'); rctx.drawImage(img, 0, 0);
+        const corner = rctx.getImageData(2, 2, 1, 1).data[3];
+        const center = rctx.getImageData(128, 128, 1, 1).data[3];
+        const dlBtn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('Download transparent PNG'));
+        dlBtn.click();
+        await sleep(800);
+        return { done, w: img.naturalWidth, h: img.naturalHeight, corner, center, note: document.body.innerText.includes('Saved to your Downloads folder.') };
+      })()`);
+      const nobgPath = path.join(mediaTmp, 'subject-nobg.png');
+      let nobgCorner = -1;
+      let nobgCenter = -1;
+      let nobgAlpha = false;
+      if (fs.existsSync(nobgPath)) {
+        const meta = await sharp(nobgPath).metadata();
+        nobgAlpha = meta.hasAlpha === true;
+        const { data } = await sharp(nobgPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+        nobgCorner = data[3];
+        nobgCenter = data[(128 * meta.width + 128) * 4 + 3];
+      }
+      check('remove-background ONNX inference via UI', rbResult.done === true && rbResult.w === 256 && rbResult.corner < 32 && rbResult.center > 224, JSON.stringify(rbResult).slice(0, 200));
+      check('transparent PNG saved with clean alpha', fs.existsSync(nobgPath) && nobgAlpha && nobgCorner < 32 && nobgCenter > 224 && rbResult.note === true, JSON.stringify({ alpha: nobgAlpha, corner: nobgCorner, center: nobgCenter }));
+
+      if (process.env.VELA_SMOKE_HIGH === '1') {
+        const highRun = await mcWc.executeJavaScript(`(async () => {
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+          const status = await window.launcher.media.ensureModels('high');
+          if (!status.highReady) return { error: status.error || 'high tier failed' };
+          const reprocess = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Re-process');
+          reprocess.click();
+          await sleep(300);
+          const highBtn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'High quality');
+          highBtn.click();
+          await sleep(200);
+          const runBtn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Remove background');
+          runBtn.click();
+          for (let i = 0; i < 180; i++) {
+            await sleep(1000);
+            if ([...document.querySelectorAll('button')].some((b) => b.textContent.includes('Download transparent PNG'))) return { ok: true };
+          }
+          return { error: 'high inference timed out' };
+        })()`);
+        const isnetSize = (() => { try { return fs.statSync(path.join(modelDir, 'resources.json')).size > 0 ? JSON.parse(fs.readFileSync(path.join(modelDir, 'resources.json'), 'utf8'))['/models/isnet'].size : 0; } catch { return 0; } })();
+        check('tier-2 high model + inference (VELA_SMOKE_HIGH)', highRun.ok === true && isnetSize === 176149806, JSON.stringify(highRun).slice(0, 160));
+      }
+      viewManager.goHome();
+    } catch (err) {
+      check('smoke crashed', false, err.message);
+    }
+    const failed = results.some((l) => l.startsWith('FAIL'));
+    const out = (msg) => require('fs').writeSync(1, `${msg}\n`);
+    out('\n=== SMOKE RESULTS ===');
+    for (const line of results) out(line);
+    out(failed ? 'SMOKE: FAIL' : 'SMOKE: PASS');
+    app.exit(failed ? 1 : 0);
+  }
+
+  app.whenReady().then(() => {
+    featuresProtocol.serve();
+    registerIpc();
+    createWindow();
+    if (SMOKE) {
+      win.webContents.on('did-finish-load', () => runSmoke());
+    }
+    if (process.argv.includes('--shots')) {
+      win.webContents.on('did-finish-load', () => {
+        setTimeout(() => {
+          require('../../scripts/shots').run(win)
+            .catch((err) => { console.error(err); return 1; })
+            .then((code) => {
+              app.exit(code || 0);
+            });
+        }, 400);
+      });
+    }
+  });
+
+  app.on('window-all-closed', () => {
+    if (!SMOKE) app.quit();
+  });
+}

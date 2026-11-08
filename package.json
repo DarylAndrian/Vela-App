@@ -1,0 +1,26 @@
+{
+  "name": "vela",
+  "productName": "Vela",
+  "version": "0.4.0",
+  "description": "Launcher for the Vela service family",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "smoke": "electron . --smoke",
+    "shots": "electron . --shots",
+    "features:dev": "npm --prefix features run dev",
+    "features:build": "npm --prefix features run build",
+    "dist": "npm run features:build && electron-builder --win nsis"
+  },
+  "author": "Vela",
+  "license": "MIT",
+  "dependencies": {
+    "ffmpeg-static": "^5.2.0",
+    "heic-convert": "^2.1.0",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "electron": "^45.0.0",
+    "electron-builder": "^26.0.0"
+  }
+}

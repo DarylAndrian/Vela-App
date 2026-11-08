@@ -1,0 +1,113 @@
+@import "tailwindcss";
+@import './fonts/fonts.css';
+
+/* Launcher theme is driven by data-theme on <html>, not a .dark class. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root {
+  --font-instrument: 'Instrument Sans', Arial, Helvetica, sans-serif;
+  --font-instrument-serif: 'Instrument Serif', Georgia, serif;
+  --font-jetbrains-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --bg: #faf9f6;
+  --surface: #ffffff;
+  --surface-2: #f4f3ef;
+  --ink: #1c1917;
+  --mut: #77716a;
+  --line: #e6e4df;
+  --line-strong: #d6d3cd;
+  --accent: #e14a1f;
+  --accent-strong: #c6380f;
+  --on-accent: #ffffff;
+  --accent-soft: #fdeee8;
+}
+
+[data-theme="dark"] {
+  --bg: #0e0d0b;
+  --surface: #171613;
+  --surface-2: #201e1a;
+  --ink: #e9e6e0;
+  --mut: #9c978f;
+  --line: #282520;
+  --line-strong: #383429;
+  --accent: #ff6b3d;
+  --accent-strong: #ff8a63;
+  --on-accent: #1c0a04;
+  --accent-soft: #2b160d;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-mut: var(--mut);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-on-accent: var(--on-accent);
+  --color-accent-soft: var(--accent-soft);
+
+  --font-sans: var(--font-instrument);
+  --font-serif: var(--font-instrument-serif);
+  --font-mono: var(--font-jetbrains-mono);
+
+  --shadow-card: 0 1px 2px rgb(28 25 23 / 0.04), 0 1px 3px rgb(28 25 23 / 0.06);
+  --shadow-card-hover: 0 4px 10px -4px rgb(28 25 23 / 0.14),
+    0 2px 4px rgb(28 25 23 / 0.05);
+  --radius-card: 0.875rem;
+}
+
+@keyframes indeterminate-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(350%);
+  }
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-instrument);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background-color: var(--accent);
+    color: var(--on-accent);
+  }
+
+  button,
+  select,
+  input,
+  textarea {
+    font: inherit;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-instrument-serif);
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+}

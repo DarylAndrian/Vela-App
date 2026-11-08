@@ -1,0 +1,24 @@
+appId: com.vela.launcher
+productName: Vela
+directories:
+  output: dist
+files:
+  - src/**/*
+  - assets/**/*
+  - features/dist/**/*
+  - package.json
+asarUnpack:
+  - "**/node_modules/ffmpeg-static/**"
+  - "**/node_modules/sharp/**"
+  - "**/node_modules/@img/**"
+win:
+  target: nsis
+  icon: assets/icon.ico
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Vela
+  uninstallDisplayName: Vela

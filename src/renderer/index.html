@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+<title>Vela</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <header id="appHeader">
+    <div class="logo">
+      <svg viewBox="0 0 32 32" fill="none">
+        <path d="M8 16c2-4 4-6 8-6v14c-4 0-6-2-8-6v-2z" fill="#fff" fill-opacity=".95"/>
+        <path d="M16 10c4 0 6 2 8 6-2 4-4 6-8 6V10z" fill="#fff" fill-opacity=".65"/>
+      </svg>
+    </div>
+    <div class="title-block">
+      <h1><span class="grad">Vela</span></h1>
+      <p>All your Vela services, one home</p>
+    </div>
+    <div class="header-spacer"></div>
+    <div class="header-actions">
+      <button class="btn primary sign-in-btn" id="signInBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg>
+        Sign in
+      </button>
+      <button class="account-chip" id="accountChip" title="Account — click to manage connection">
+        <span class="avatar" id="accountAvatar">?</span>
+        <span class="account-text">
+          <span class="account-name" id="accountName"></span>
+          <span class="account-state" id="accountState">Connected</span>
+        </span>
+      </button>
+      <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode">
+        <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></svg>
+      </button>
+      <button class="icon-btn" id="settingsBtn" title="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="service-top" id="serviceTop">
+    <div class="toolbar">
+      <button class="icon-btn" id="backBtn" title="Back">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      </button>
+      <button class="icon-btn" id="homeBtn" title="Home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>
+      </button>
+      <span class="svc-title" id="svcTitle"></span>
+      <span class="url-chip" id="svcUrl"></span>
+    </div>
+    <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
+  </div>
+
+  <div class="home-scroll" id="homeScroll">
+    <div class="error-panel" id="errorPanel">
+      <div class="glyph">!</div>
+      <h3 id="errorTitle">Something went wrong</h3>
+      <p id="errorMessage"></p>
+      <div class="btn-row">
+        <button class="btn primary" id="errorRetry">Retry</button>
+        <button class="btn" id="errorSettings">Open Settings</button>
+      </div>
+    </div>
+    <div class="grid" id="cardGrid"></div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="settingsModal">
+  <div class="modal">
+    <h2>Settings</h2>
+    <p class="sub">Paths auto-detected when left empty. Changes are saved to config.json.</p>
+    <div class="field">
+      <label>Vela site base URL</label>
+      <div class="field-row">
+        <input type="text" id="cfgVelaBaseUrl" placeholder="https://your-vela-site.netlify.app" spellcheck="false">
+      </div>
+    </div>
+    <div class="field">
+      <label>VelaIsland — VelaDynamic.exe</label>
+      <div class="field-row">
+        <input type="text" id="cfgVelaIslandPath" placeholder="auto-detect" spellcheck="false">
+        <button class="browse" data-locate="velaIslandPath">Browse…</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>VelaZoom — VelaZoom.exe</label>
+      <div class="field-row">
+        <input type="text" id="cfgVelaZoomPath" placeholder="auto-detect" spellcheck="false">
+        <button class="browse" data-locate="velaZoomPath">Browse…</button>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div class="field">
+      <label>Appearance</label>
+      <div class="appearance" id="appearanceChips">
+        <button class="chip" data-theme-choice="dark">Dark</button>
+        <button class="chip" data-theme-choice="light">Light</button>
+        <button class="chip" data-theme-choice="system">System</button>
+      </div>
+    </div>
+    <div class="config-path">
+      <span id="configPathText">Config: …</span>
+      <button class="link-btn" id="revealConfig">Reveal in Explorer</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="settingsCancel">Cancel</button>
+      <button class="btn primary" id="settingsSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>
