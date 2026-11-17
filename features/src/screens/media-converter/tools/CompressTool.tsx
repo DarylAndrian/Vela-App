@@ -58,8 +58,7 @@ function inputValueForBytes(bytes: number, unit: SizeUnit): number {
     : Math.round(bytes / 1024);
 }
 
-const FIELD_CLASSES =
-  'w-full rounded-xl border border-line-strong bg-surface px-4 py-3 font-mono text-sm font-medium text-ink outline-none transition focus:border-accent focus:ring-4 focus:ring-accent-soft';
+const FIELD_CLASSES = 'mc-input';
 
 export function CompressTool() {
   const [files, setFiles] = useState<File[]>([]);
@@ -215,12 +214,12 @@ export function CompressTool() {
         },
       ]}
     >
-      <section className="rounded-2xl border border-line bg-surface p-5 shadow-card sm:p-6">
+      <section className="mc-bento p-5 sm:p-6">
         <div className="mb-4 grid gap-4 sm:grid-cols-2">
           <div>
             <label
               htmlFor="compress-output-format"
-              className="mb-1.5 block text-sm font-medium text-ink"
+              className="mc-label"
             >
               Output format
             </label>
@@ -243,7 +242,7 @@ export function CompressTool() {
           <div>
             <label
               htmlFor="compress-target-size"
-              className="mb-1.5 block text-sm font-medium text-ink"
+              className="mc-label"
             >
               Target size
             </label>
@@ -270,7 +269,7 @@ export function CompressTool() {
                   setSizeUnit(nextUnit);
                   setSizeValue(inputValueForBytes(targetBytes, nextUnit));
                 }}
-                className={FIELD_CLASSES.replace('w-full', 'w-24')}
+                className={`${FIELD_CLASSES} w-24 shrink-0`}
               >
                 <option value="kb">KB</option>
                 <option value="mb">MB</option>
@@ -279,8 +278,8 @@ export function CompressTool() {
           </div>
         </div>
 
-        <div className="mb-5 flex flex-wrap items-center gap-2">
-          <span className="mr-1 font-mono text-xs font-medium tracking-wider text-mut uppercase">
+        <div role="group" aria-labelledby="compress-presets" className="mb-5 flex flex-wrap items-center gap-2">
+          <span id="compress-presets" className="mr-1 text-xs font-medium text-mut">
             Presets
           </span>
           {SIZE_PRESETS.map((preset) => {
@@ -290,10 +289,11 @@ export function CompressTool() {
                 key={preset.label}
                 type="button"
                 onClick={() => handlePresetClick(preset.kilobytes)}
-                className={`rounded-full px-3 py-1.5 font-mono text-xs font-semibold transition ${
+                aria-pressed={isActive}
+                className={`min-h-8 rounded-full border px-3 text-xs font-medium tabular-nums transition-colors duration-[120ms] ${
                   isActive
-                    ? 'bg-accent text-on-accent'
-                    : 'border border-line-strong bg-surface text-mut hover:bg-surface-2 hover:text-ink'
+                    ? 'border-accent bg-accent-soft text-accent-text'
+                    : 'border-line-strong bg-surface text-mut hover:bg-hover hover:text-ink'
                 }`}
               >
                 {preset.label}
@@ -313,7 +313,7 @@ export function CompressTool() {
           />
 
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm leading-6 text-mut">{summary}</p>
+            <p className="text-sm leading-5 text-mut">{summary}</p>
             <Button onClick={handleConvert} disabled={!canConvert} loading={loading}>
               {buttonLabel}
             </Button>

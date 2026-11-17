@@ -39,11 +39,11 @@ function Thumb({ image, selected, onRemove, onPick }: {
           onClick={(e) => { e.stopPropagation(); onRemove(); }}
           style={{
             position: 'absolute', top: 4, right: 4, width: 15, height: 15, borderRadius: 4,
-            background: 'rgba(0,0,0,.45)', color: '#fff', fontSize: 10, display: 'grid', placeItems: 'center', cursor: 'pointer',
+            background: 'rgba(0,0,0,.45)', color: '#fff', fontSize: 12, display: 'grid', placeItems: 'center', cursor: 'pointer',
           }}
         >×</div>
       </div>
-      <div style={{ fontSize: 9.5, color: 'var(--text-3)', marginTop: 5, textAlign: 'center', fontFamily: 'var(--mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 5, textAlign: 'center', fontFamily: 'var(--mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {image.name}
       </div>
     </div>
@@ -256,7 +256,7 @@ export function PictureConnectorScreen() {
           </button>
           <div style={{
             flex: 1, border: '1.5px dashed var(--border-strong)', borderRadius: 'var(--radius-md)',
-            padding: '9px 15px', fontSize: 11.5, color: 'var(--text-3)', textAlign: 'center',
+            padding: '9px 15px', fontSize: 12, color: 'var(--text-3)', textAlign: 'center',
           }}>
             Drag &amp; drop screenshots here, or press <b style={{ color: 'var(--text-2)' }}>Ctrl+V</b> to paste
           </div>
@@ -280,7 +280,7 @@ export function PictureConnectorScreen() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 292px', gap: 13, alignItems: 'start' }}>
         <div className="card-panel" style={{ overflow: 'hidden' }}>
           <div style={{ padding: '9px 15px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 9 }}>
-            <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.7px', color: 'var(--text-3)', textTransform: 'uppercase' }}>Live preview</span>
+            <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.7px', color: 'var(--text-3)', textTransform: 'uppercase' }}>Live preview</span>
             <div style={{ flex: 1 }} />
             {canvasLimited && images.length > 0 && (
               <span className="badge amber">Scaled to fit the {16000}px canvas limit</span>
@@ -299,7 +299,7 @@ export function PictureConnectorScreen() {
             background: 'repeating-conic-gradient(var(--surface-2) 0% 25%, var(--surface) 0% 50%) 0 0/22px 22px',
           }}>
             {images.length === 0 ? (
-              <div style={{ textAlign: 'center', color: 'var(--text-3)', fontSize: 12.5, lineHeight: 1.7 }}>
+              <div style={{ textAlign: 'center', color: 'var(--text-3)', fontSize: 12, lineHeight: 1.7 }}>
                 <div style={{ fontSize: 26, marginBottom: 8 }}>🖼️</div>
                 Add screenshots to see the composite here.
               </div>

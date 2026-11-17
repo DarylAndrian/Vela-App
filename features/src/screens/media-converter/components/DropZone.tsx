@@ -147,45 +147,45 @@ export function DropZone({
         onDropCapture={(event) => {
           nativeDropFiles.current = Array.from(event.dataTransfer?.files ?? []);
         }}
-        className={`cursor-pointer rounded-2xl border-2 border-dashed px-6 py-10 text-center transition-colors ${
+        className={`cursor-pointer rounded-2xl border-2 border-dashed px-6 py-10 text-center transition-colors duration-[180ms] ${
           isDragActive
             ? 'border-accent bg-accent-soft'
-            : 'border-line-strong bg-surface-2/60 hover:border-accent/60 hover:bg-accent-soft/40'
+            : 'border-line-strong bg-surface hover:border-accent hover:bg-hover'
         }`}
       >
         <input {...getInputProps()} />
         <div className="mx-auto flex max-w-md flex-col items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-accent text-on-accent">
-            <UploadIcon className="h-5 w-5" strokeWidth={1.8} />
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent-soft text-accent-text">
+            <UploadIcon aria-hidden className="h-6 w-6" />
           </div>
           <div>
             <p className="text-base font-semibold text-ink">
               {isDragActive ? activeDropLabel : dropLabel}
             </p>
-            <p className="mt-0.5 text-sm text-mut">{hintLabel}</p>
+            <p className="mt-1 text-sm text-mut">{hintLabel}</p>
           </div>
         </div>
       </div>
 
       {files.length > 0 && (
-        <div className="rounded-2xl border border-line bg-surface p-4 shadow-card">
+        <div className="mc-panel p-4">
           <div className="mb-3 flex items-center justify-between gap-3">
             <p className="text-sm font-semibold text-ink">
               {files.length} file{files.length === 1 ? '' : 's'}
-              <span className="ml-2 font-mono text-xs font-normal text-mut">
+              <span className="ml-2 text-xs font-medium tabular-nums text-mut">
                 {formatFileSize(totalBytes)}
               </span>
             </p>
             <button
               type="button"
               onClick={clearFiles}
-              className="text-sm font-medium text-mut transition-colors hover:text-accent"
+              className="min-h-8 rounded-lg px-3 text-sm font-medium text-mut transition-colors duration-[120ms] hover:bg-hover hover:text-ink"
             >
               Clear all
             </button>
           </div>
 
-          <ul className="grid max-h-72 gap-2 overflow-y-auto sm:grid-cols-2">
+          <ul aria-label="Selected files" className="grid max-h-72 gap-2 overflow-y-auto sm:grid-cols-2">
             {files.map((file, index) => {
               const url = previewUrls[index] ?? null;
               const previewable = url !== null;
@@ -193,7 +193,7 @@ export function DropZone({
               return (
                 <li
                   key={`${file.name}-${file.size}-${index}`}
-                  className="flex items-center gap-3 rounded-xl border border-line bg-surface-2/60 p-2"
+                  className="flex min-h-12 items-center gap-3 rounded-lg border border-line bg-base p-2"
                 >
                   <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-line bg-surface">
                     {previewable ? (
@@ -212,7 +212,7 @@ export function DropZone({
                         />
                       )
                     ) : (
-                      <FileIcon className="h-5 w-5 text-mut" />
+                      <FileIcon aria-hidden className="h-5 w-5 text-mut" />
                     )}
                   </div>
 
@@ -220,7 +220,7 @@ export function DropZone({
                     <p className="truncate text-sm font-medium text-ink">
                       {file.name}
                     </p>
-                    <p className="font-mono text-xs text-mut">
+                    <p className="text-xs font-medium tabular-nums text-mut">
                       {formatFileSize(file.size)}
                     </p>
                   </div>
@@ -228,7 +228,8 @@ export function DropZone({
                   <button
                     type="button"
                     onClick={() => removeFile(index)}
-                    className="shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-mut transition-colors hover:bg-surface hover:text-accent"
+                    aria-label={`Remove ${file.name}`}
+                    className="min-h-8 shrink-0 rounded-lg px-3 text-xs font-medium text-mut transition-colors duration-[120ms] hover:bg-hover hover:text-ink"
                   >
                     Remove
                   </button>

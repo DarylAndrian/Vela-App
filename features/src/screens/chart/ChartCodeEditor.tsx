@@ -1,20 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { organizeMermaid } from '../../lib/mermaidOrganizer';
 import { serializeNodeStyle, type NodeStyle } from '../../lib/chartCodeStyles';
-import type { ChartCode } from '../../lib/ipc';
+import type { ChartChanges, ChartCode, Product } from '../../lib/ipc';
 import { MermaidViewer } from './MermaidViewer';
-import { exportRaster, exportSvg } from './export';
+import { copyPngToClipboard, exportRaster, exportSvg } from './export';
 import { Spinner } from './Spinner';
 
-export function ChartCodeEditor({ chart, saving, onSave, onBack, isDark }: {
+export function ChartCodeEditor({ chart, products, saving, onSave, onBack, isDark }: {
   chart: ChartCode;
+  products: Product[];
   saving: boolean;
-  onSave: (title: string, mmd_code: string) => void;
+  onSave: (changes: ChartChanges) => void;
   onBack: () => void;
   isDark: boolean;
 }) {
   const [title, setTitle] = useState(chart.title);
   const [code, setCode] = useState(chart.mmd_code);
+  const [productId, setProductId] = useState(chart.product_id ?? '');
+  // Only send product fields once the user picks one, so legacy name-only links survive a save.
+  const [productTouched, setProductTouched] = useState(false);
   const [layout, setLayout] = useState<'elk' | 'dagre'>('elk');
   const [renderKey, setRenderKey] = useState(0);
   const [dirty, setDirty] = useState(false);
@@ -22,9 +26,25 @@ export function ChartCodeEditor({ chart, saving, onSave, onBack, isDark }: {
   const [toast, setToast] = useState<string | null>(null);
   const [showExport, setShowExport] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const codeRef = useRef(code);
+  const [copying, setCopying] = useState(false);
   const savingRef = useRef(saving);
-  codeRef.current = code;
+
+  const submit = () => {
+    const changes: ChartChanges = { title, mmd_code: code };
+    if (productTouched) {
+      changes.product_id = productId || null;
+      changes.product_name = products.find((p) => p.id === productId)?.name ?? null;
+    }
+    onSave(changes);
+  };
+  const submitRef = useRef(submit);
+  submitRef.current = submit;
+
+  useEffect(() => {
+    if (productTouched || productId || !chart.product_name) return;
+    const match = products.find((p) => p.name === chart.product_name);
+    if (match) setProductId(match.id);
+  }, [products, chart.product_name, productId, productTouched]);
 
   useEffect(() => {
     if (savingRef.current && !saving) setDirty(false);
@@ -35,12 +55,12 @@ export function ChartCodeEditor({ chart, saving, onSave, onBack, isDark }: {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
-        onSave(title, codeRef.current);
+        submitRef.current();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onSave, title]);
+  }, []);
 
   const say = (msg: string) => {
     setToast(msg);
@@ -96,9 +116,22 @@ export function ChartCodeEditor({ chart, saving, onSave, onBack, isDark }: {
     }
   };
 
+  const doCopy = async () => {
+    if (copying) return;
+    setCopying(true);
+    try {
+      await copyPngToClipboard(isDark);
+      say('Image copied to clipboard.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCopying(false);
+    }
+  };
+
   return (
     <div>
-      <div className="card-panel" style={{ padding: '13px 16px', display: 'flex', alignItems: 'center', gap: 11, marginBottom: 13 }}>
+      <div className="card-panel" style={{ padding: '13px 16px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 11, marginBottom: 13 }}>
         <button className="icon-btn" title="Back to list" style={{ width: 34, height: 34 }} onClick={onBack}>
           <svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
         </button>
@@ -106,12 +139,25 @@ export function ChartCodeEditor({ chart, saving, onSave, onBack, isDark }: {
           value={title}
           onChange={(e) => { setTitle(e.target.value); setDirty(true); }}
           style={{
-            flex: 1, height: 34, borderRadius: 'var(--radius-sm)', border: '1px solid transparent',
-            background: 'transparent', color: 'var(--text)', padding: '0 10px', fontSize: 14, fontWeight: 650, fontFamily: 'var(--font)',
+            flex: 1, minWidth: 180, height: 34, borderRadius: 'var(--radius-sm)', border: '1px solid transparent',
+            background: 'transparent', color: 'var(--text)', padding: '0 10px', fontSize: 14, fontWeight: 600, fontFamily: 'var(--font)',
           }}
           onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
           onBlur={(e) => (e.currentTarget.style.borderColor = 'transparent')}
         />
+        <select
+          title="Product"
+          value={productId}
+          onChange={(e) => { setProductId(e.target.value); setProductTouched(true); setDirty(true); }}
+          style={{
+            height: 34, maxWidth: 180, borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+            background: 'var(--surface-2)', color: productId ? 'var(--text)' : 'var(--text-3)',
+            padding: '0 10px', fontSize: 12, fontWeight: 600, fontFamily: 'var(--font)', cursor: 'pointer',
+          }}
+        >
+          <option value="">No product</option>
+          {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
         <span className={`badge ${saving ? 'blue' : dirty ? 'amber' : 'gray'}`}>
           {saving && <Spinner size={10} />}
           {saving ? 'Saving…' : dirty ? 'Unsaved changes' : 'All changes saved'}
@@ -119,6 +165,12 @@ export function ChartCodeEditor({ chart, saving, onSave, onBack, isDark }: {
         <button className="btn" onClick={doOrganize} title="Rewrite the code into a clean structure">
           <svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h12M3 18h18" /><path d="M17 10l4 4-4 4" /></svg>
           Organize
+        </button>
+        <button className="btn" disabled={copying} onClick={() => void doCopy()} title="Copy the chart as a PNG image">
+          {copying ? <Spinner size={14} /> : (
+            <svg viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" /></svg>
+          )}
+          {copying ? 'Copying…' : 'Copy'}
         </button>
         <div style={{ position: 'relative' }}>
           <button className="btn" disabled={exporting} onClick={() => setShowExport((v) => !v)}>
@@ -133,7 +185,7 @@ export function ChartCodeEditor({ chart, saving, onSave, onBack, isDark }: {
               {(['png', 'jpeg', 'svg'] as const).map((f) => (
                 <div key={f}
                   onClick={() => void doExport(f)}
-                  style={{ padding: '8px 12px', borderRadius: 'var(--radius-sm)', fontSize: 11.5, fontWeight: 650, color: 'var(--text-2)', cursor: 'pointer' }}
+                  style={{ padding: '8px 12px', borderRadius: 'var(--radius-sm)', fontSize: 12, fontWeight: 600, color: 'var(--text-2)', cursor: 'pointer' }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                 >
@@ -143,7 +195,7 @@ export function ChartCodeEditor({ chart, saving, onSave, onBack, isDark }: {
             </div>
           )}
         </div>
-        <button className="btn primary" disabled={saving} onClick={() => onSave(title, code)}>
+        <button className="btn primary" disabled={saving} onClick={submit}>
           {saving ? <Spinner size={14} /> : (
             <svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><path d="M17 21v-8H7v8M7 3v5h8" /></svg>
           )}
@@ -153,7 +205,7 @@ export function ChartCodeEditor({ chart, saving, onSave, onBack, isDark }: {
 
       {error && (
         <div style={{
-          padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 12, fontSize: 11.5,
+          padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 12, fontSize: 12,
           color: 'var(--red)', background: 'color-mix(in srgb, var(--red) 12%, transparent)',
           border: '1px solid color-mix(in srgb, var(--red) 32%, transparent)',
         }}>{error}</div>
@@ -161,14 +213,14 @@ export function ChartCodeEditor({ chart, saving, onSave, onBack, isDark }: {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 420px) 1fr', gap: 13, height: 'calc(100vh - 250px)', minHeight: 480 }}>
         <div className="card-panel" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{ padding: '9px 15px', borderBottom: '1px solid var(--border)', fontSize: 10.5, fontWeight: 700, letterSpacing: '.7px', color: 'var(--text-3)', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ padding: '9px 15px', borderBottom: '1px solid var(--border)', fontSize: 12, fontWeight: 700, letterSpacing: '.7px', color: 'var(--text-3)', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             Mermaid source
             <span style={{ fontFamily: 'var(--mono)', fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>mmd</span>
           </div>
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
             <div style={{
               width: 38, flex: 'none', padding: '13px 0', background: 'var(--surface-2)', borderRight: '1px solid var(--border)',
-              fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text-3)', textAlign: 'center', lineHeight: 1.75, overflow: 'hidden',
+              fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text-3)', textAlign: 'center', lineHeight: 1.75, overflow: 'hidden',
             }}>
               {Array.from({ length: gutterLines }, (_, i) => <div key={i}>{i + 1}</div>)}
             </div>
@@ -178,7 +230,7 @@ export function ChartCodeEditor({ chart, saving, onSave, onBack, isDark }: {
               onChange={(e) => { setCode(e.target.value); setDirty(true); }}
               style={{
                 flex: 1, border: 'none', outline: 'none', resize: 'none', background: 'transparent', color: 'var(--text)',
-                fontFamily: 'var(--mono)', fontSize: 11.5, lineHeight: 1.75, padding: '13px 15px',
+                fontFamily: 'var(--mono)', fontSize: 12, lineHeight: 1.75, padding: '13px 15px',
               }}
             />
           </div>
@@ -194,7 +246,7 @@ export function ChartCodeEditor({ chart, saving, onSave, onBack, isDark }: {
               onToggleLayout={() => { setLayout((l) => (l === 'elk' ? 'dagre' : 'elk')); setRenderKey((k) => k + 1); }}
             />
           ) : (
-            <div style={{ flex: 1, display: 'grid', placeItems: 'center', color: 'var(--text-3)', fontSize: 12.5 }}>
+            <div style={{ flex: 1, display: 'grid', placeItems: 'center', color: 'var(--text-3)', fontSize: 12 }}>
               Enter Mermaid code to see preview
             </div>
           )}

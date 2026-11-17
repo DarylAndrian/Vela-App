@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { Brush, Grid3x3, type LucideIcon, Square, Type } from 'lucide-react';
 import { DropZone } from '../components/DropZone';
 import { EditorCanvas, fitCanvasSize } from './EditorCanvas';
 import type { EditorOp } from './draw-ops';
@@ -85,65 +86,16 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+const TOOL_ICONS: Record<EditorToolId, LucideIcon> = {
+  pixelate: Grid3x3,
+  shape: Square,
+  text: Type,
+  brush: Brush,
+};
+
 function ToolIcon({ tool }: { tool: EditorToolId }) {
-  const className = 'h-5 w-5';
-
-  if (tool === 'pixelate') {
-    return (
-      <svg viewBox="0 0 20 20" fill="currentColor" className={className} aria-hidden>
-        <rect x="2" y="2" width="4" height="4" rx="0.5" />
-        <rect x="8" y="2" width="4" height="4" rx="0.5" opacity="0.55" />
-        <rect x="14" y="2" width="4" height="4" rx="0.5" />
-        <rect x="2" y="8" width="4" height="4" rx="0.5" opacity="0.55" />
-        <rect x="8" y="8" width="4" height="4" rx="0.5" />
-        <rect x="14" y="8" width="4" height="4" rx="0.5" opacity="0.55" />
-        <rect x="2" y="14" width="4" height="4" rx="0.5" />
-        <rect x="8" y="14" width="4" height="4" rx="0.5" opacity="0.55" />
-        <rect x="14" y="14" width="4" height="4" rx="0.5" />
-      </svg>
-    );
-  }
-
-  if (tool === 'shape') {
-    return (
-      <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden>
-        <rect
-          x="3"
-          y="4"
-          width="14"
-          height="12"
-          rx="2"
-          stroke="currentColor"
-          strokeWidth="1.75"
-        />
-      </svg>
-    );
-  }
-
-  if (tool === 'text') {
-    return (
-      <svg viewBox="0 0 20 20" fill="currentColor" className={className} aria-hidden>
-        <path d="M5 4.5h10v2H11.25V16h-2.5V6.5H5v-2Z" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden>
-      <path
-        d="M4 16c2.2-1.1 3.4-3.4 5.8-8.2.5-1 1.6-1.5 2.7-1.2l.4.1c1.2.4 1.6 1.9.8 2.9C11.2 13 8.8 15 4 16Z"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M12.2 6.2 14.8 3.6a1.2 1.2 0 0 1 1.7 1.7l-2.6 2.6"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
+  const Icon = TOOL_ICONS[tool];
+  return <Icon aria-hidden className="h-5 w-5" />;
 }
 
 function ChipGroup<T extends string>({
@@ -156,7 +108,7 @@ function ChipGroup<T extends string>({
   onChange: (id: T) => void;
 }) {
   return (
-    <div className="inline-flex flex-wrap gap-1 rounded-xl border border-line bg-surface-2 p-1">
+    <div role="group" className="inline-flex flex-wrap gap-1 rounded-xl border border-line bg-base p-1">
       {items.map((item) => {
         const selected = item.id === value;
 
@@ -165,10 +117,11 @@ function ChipGroup<T extends string>({
             key={item.id}
             type="button"
             onClick={() => onChange(item.id)}
-            className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+            aria-pressed={selected}
+            className={`min-h-8 rounded-lg px-3 text-xs font-medium transition-colors duration-[120ms] ${
               selected
-                ? 'bg-accent text-on-accent'
-                : 'text-mut hover:text-ink'
+                ? 'bg-accent-soft text-accent-text'
+                : 'text-mut hover:bg-hover hover:text-ink'
             }`}
           >
             {item.label}
@@ -199,8 +152,8 @@ function ColorDots({
             aria-checked={selected}
             aria-label={color.id}
             onClick={() => onChange(color.id)}
-            className={`h-7 w-7 rounded-full transition ${
-              selected ? 'ring-2 ring-accent ring-offset-2 ring-offset-surface' : 'hover:scale-105'
+            className={`h-8 w-8 rounded-full ${
+              selected ? 'ring-2 ring-focus ring-offset-2 ring-offset-surface' : ''
             } ${color.border ? 'border border-line' : ''}`}
             style={{ backgroundColor: color.hex }}
           />
@@ -387,7 +340,7 @@ export function EditorMockup({
           <p className="truncate text-sm font-semibold text-ink">
             {file ? file.name : 'No image selected'}
           </p>
-          <p className="font-mono text-xs text-mut">
+          <p className="text-xs font-medium tabular-nums text-mut">
             {file
               ? formatFileSize(file.size)
               : 'Add a photo, then annotate it right here.'}
@@ -422,9 +375,13 @@ export function EditorMockup({
         </div>
       </div>
 
-      <p className="text-xs text-mut">{TOOL_HINTS[tool]}</p>
+      <p className="text-xs font-medium text-mut">{TOOL_HINTS[tool]}</p>
 
-      <div className="relative flex min-h-[360px] items-center justify-center overflow-hidden rounded-2xl bg-[#171614] dark:border dark:border-line sm:min-h-[440px]">
+      <div
+        className={`relative flex min-h-[360px] items-center justify-center overflow-hidden rounded-2xl border border-line sm:min-h-[440px] ${
+          previewUrl ? 'bg-[#18181B]' : 'bg-base'
+        }`}
+      >
         {previewUrl && image && canvasSize.width > 0 ? (
           <div className="relative inline-block max-h-[440px] max-w-full">
             <EditorCanvas
@@ -481,7 +438,7 @@ export function EditorMockup({
                   }
                 }}
                 placeholder="Type here"
-                className="absolute z-10 min-w-[8rem] rounded-md border border-white/70 bg-slate-900/70 px-2 py-1 font-semibold text-white outline-none placeholder:text-white/50"
+                className="absolute z-10 min-w-[8rem] rounded-lg border border-white/60 bg-[#09090B]/80 px-2 py-1 font-semibold text-white outline-none placeholder:text-white/60"
                 style={{
                   left: textDraft.left,
                   top: textDraft.top,
@@ -511,7 +468,7 @@ export function EditorMockup({
         )}
       </div>
 
-      <div className="rounded-2xl border border-line bg-surface-2 px-4 py-3">
+      <div className="mc-panel px-4 py-3">
         {tool === 'pixelate' && (
           <OptionRow>
             <ChipGroup
@@ -552,7 +509,7 @@ export function EditorMockup({
         )}
       </div>
 
-      <div className="grid grid-cols-4 gap-2">
+      <div role="group" aria-label="Editing tool" className="grid grid-cols-4 gap-2">
         {EDITOR_TOOLS.map((item) => {
           const selected = item.id === tool;
 
@@ -565,10 +522,11 @@ export function EditorMockup({
                 setTextDraft(null);
                 setTool(item.id);
               }}
-              className={`flex flex-col items-center gap-1.5 rounded-2xl px-2 py-3 text-xs font-semibold transition ${
+              aria-pressed={selected}
+              className={`flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl border px-2 py-3 text-xs font-medium transition-colors duration-[120ms] ${
                 selected
-                  ? 'bg-accent text-on-accent'
-                  : 'bg-surface-2 text-mut hover:bg-line hover:text-ink'
+                  ? 'border-accent bg-accent-soft text-accent-text'
+                  : 'border-line bg-surface text-mut hover:bg-hover hover:text-ink'
               }`}
             >
               <ToolIcon tool={item.id} />

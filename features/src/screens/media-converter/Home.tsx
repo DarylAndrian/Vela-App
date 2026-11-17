@@ -49,45 +49,42 @@ const TOOLS = [
 
 export function Home() {
   return (
-    <main className="mx-auto w-full max-w-5xl px-5 py-14 sm:px-8 sm:py-20">
-      <header className="mb-10 text-center sm:mb-14 sm:text-left">
-        <p className="mb-3 font-mono text-xs font-medium tracking-[0.18em] text-accent uppercase">
-          Media Converter
-        </p>
-        <h1 className="max-w-3xl text-balance text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
-          Convert, compress, and{' '}
-          <em className="font-display font-normal italic text-accent">clean up</em>{' '}
-          media — right on your computer
+    <main className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 sm:py-14">
+      <header className="mb-8 sm:mb-10">
+        <p className="mb-2 text-xs font-medium text-accent-text">Media Converter</p>
+        <h1 className="max-w-3xl text-balance font-display text-[32px] leading-10 font-bold text-ink">
+          Convert, compress, and <span className="text-accent-text">clean up</span> media — right on
+          your computer
         </h1>
-        <p className="mx-auto mt-4 max-w-2xl text-balance text-base leading-7 text-mut sm:mx-0">
+        <p className="mt-3 max-w-2xl text-base leading-6 text-mut">
           Six lightweight tools for images and video. Files are processed locally
           with no uploads, no accounts, and no size limits — except your
           computer&apos;s memory.
         </p>
       </header>
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <section aria-label="Tools" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-6">
         {TOOLS.map((tool) => (
-          <a
-            key={tool.href}
-            href={tool.href}
-            className="group flex flex-col gap-4 rounded-2xl border border-line bg-surface p-5 shadow-card transition hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-card-hover"
-          >
+          <a key={tool.href} href={tool.href} className="mc-product group flex flex-col gap-4">
             <div className="flex items-start justify-between">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-soft text-accent">
-                <tool.icon className="h-5 w-5" strokeWidth={1.8} />
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent-soft text-accent-text">
+                <tool.icon aria-hidden className="h-6 w-6" />
               </div>
-              <ArrowUpRightIcon className="h-4 w-4 text-mut transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-accent" />
+              <ArrowUpRightIcon
+                aria-hidden
+                className="h-5 w-5 text-mut transition-colors duration-[180ms] group-hover:text-accent-text"
+              />
             </div>
             <div>
               <h2 className="text-sm font-semibold text-ink">{tool.label}</h2>
-              <p className="mt-1.5 text-sm leading-6 text-mut">{tool.description}</p>
+              <p className="mt-1 text-sm leading-5 text-mut">{tool.description}</p>
             </div>
           </a>
         ))}
       </section>
 
-      <p className="mt-10 text-center font-mono text-xs text-mut sm:text-left">
+      <p className="mt-8 flex items-center gap-2 text-xs font-medium text-mut">
+        <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-accent" />
         All processing runs locally — your files never leave this device.
       </p>
     </main>

@@ -61,9 +61,9 @@ export function ThemeToggle() {
       onClick={toggle}
       aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
       title={dark ? 'Light mode' : 'Dark mode'}
-      className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-mut transition hover:bg-surface-2 hover:text-ink"
+      className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-mut transition-colors duration-[120ms] hover:bg-hover hover:text-ink"
     >
-      {dark ? <SunIcon className="h-[18px] w-[18px]" /> : <MoonIcon className="h-[18px] w-[18px]" />}
+      {dark ? <SunIcon aria-hidden className="h-5 w-5" /> : <MoonIcon aria-hidden className="h-5 w-5" />}
     </button>
   );
 }

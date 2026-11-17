@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { vela, type ChartCode } from '../lib/ipc';
+import { vela, type ChartChanges, type ChartCode, type Product } from '../lib/ipc';
 import { ChartCodeList } from './chart/ChartCodeList';
 import { ChartCodeEditor } from './chart/ChartCodeEditor';
 
 export function ChartCodeApp() {
   const [charts, setCharts] = useState<ChartCode[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -33,6 +34,8 @@ export function ChartCodeApp() {
 
   useEffect(() => {
     void load();
+    // Products are optional: without them the picker just offers "No product".
+    vela().products.list().then((res) => { if (res.ok) setProducts(res.data); }).catch(() => {});
     vela().onAuthExpired(() => {
       // Session lost — send the user back to the connect screen.
       (window as any).launcher.openNative('connect.html');
@@ -72,11 +75,11 @@ export function ChartCodeApp() {
     }
   };
 
-  const save = async (title: string, mmd_code: string) => {
+  const save = async (changes: ChartChanges) => {
     if (!openChart || saving) return;
     setSaving(true);
     try {
-      const res = await vela().charts.update(openChart.id, { title, mmd_code });
+      const res = await vela().charts.update(openChart.id, changes);
       if (res.ok) {
         setOpenChart(res.data);
         setCharts((prev) => prev.map((c) => (c.id === res.data.id ? res.data : c)));
@@ -117,20 +120,21 @@ export function ChartCodeApp() {
       )}
       {error && (
         <div style={{
-          padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 13, fontSize: 11.5,
+          padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 13, fontSize: 12,
           color: 'var(--red)', background: 'color-mix(in srgb, var(--red) 12%, transparent)',
           border: '1px solid color-mix(in srgb, var(--red) 32%, transparent)',
           display: 'flex', alignItems: 'center', gap: 12,
         }}>
           <span style={{ flex: 1 }}>{error}</span>
           {!openChart && !loading && charts.length === 0 && (
-            <button className="btn" style={{ padding: '5px 12px', fontSize: 11 }} onClick={() => void load()}>Retry</button>
+            <button className="btn" style={{ padding: '5px 12px', fontSize: 12 }} onClick={() => void load()}>Retry</button>
           )}
         </div>
       )}
       {openChart ? (
         <ChartCodeEditor
           chart={openChart}
+          products={products}
           saving={saving}
           onSave={save}
           onBack={back}
@@ -139,6 +143,7 @@ export function ChartCodeApp() {
       ) : (
         <ChartCodeList
           charts={charts}
+          products={products}
           loading={loading}
           creating={creating}
           deleting={deleting}

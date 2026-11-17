@@ -1,113 +1,138 @@
 @import "tailwindcss";
-@import './fonts/fonts.css';
+@import "../../styles/tokens.css" layer(base);
 
 /* Launcher theme is driven by data-theme on <html>, not a .dark class. */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-:root {
-  --font-instrument: 'Instrument Sans', Arial, Helvetica, sans-serif;
-  --font-instrument-serif: 'Instrument Serif', Georgia, serif;
-  --font-jetbrains-mono: 'JetBrains Mono', ui-monospace, monospace;
-
-  --bg: #faf9f6;
-  --surface: #ffffff;
-  --surface-2: #f4f3ef;
-  --ink: #1c1917;
-  --mut: #77716a;
-  --line: #e6e4df;
-  --line-strong: #d6d3cd;
-  --accent: #e14a1f;
-  --accent-strong: #c6380f;
-  --on-accent: #ffffff;
-  --accent-soft: #fdeee8;
-}
-
-[data-theme="dark"] {
-  --bg: #0e0d0b;
-  --surface: #171613;
-  --surface-2: #201e1a;
-  --ink: #e9e6e0;
-  --mut: #9c978f;
-  --line: #282520;
-  --line-strong: #383429;
-  --accent: #ff6b3d;
-  --accent-strong: #ff8a63;
-  --on-accent: #1c0a04;
-  --accent-soft: #2b160d;
-}
-
 @theme inline {
   --color-bg: var(--bg);
+  --color-base: var(--bg-base);
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
-  --color-ink: var(--ink);
-  --color-mut: var(--mut);
-  --color-line: var(--line);
-  --color-line-strong: var(--line-strong);
+  --color-hover: var(--card-hover);
+  --color-ink: var(--text);
+  --color-mut: var(--text-2);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-control: var(--border-control);
+  --color-focus: var(--focus);
   --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
   --color-accent-strong: var(--accent-strong);
+  --color-accent-text: var(--accent-text);
   --color-on-accent: var(--on-accent);
-  --color-accent-soft: var(--accent-soft);
+  --color-accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --color-danger: var(--danger-bg);
+  --color-danger-hover: var(--danger-hover);
+  --color-danger-pressed: var(--danger-pressed);
+  --color-on-danger: var(--on-danger);
+  --color-disabled: var(--disabled-bg);
+  --color-disabled-fg: var(--disabled-fg);
+  --color-product: var(--card-product);
+  --color-edge-product: var(--edge-product);
+  --color-edge-panel: var(--edge-panel);
+  --color-neutral-bg: var(--tone-neutral-bg);
+  --color-neutral-fg: var(--tone-neutral-fg);
+  --color-success-bg: var(--tone-success-bg);
+  --color-success-fg: var(--tone-success-fg);
+  --color-warning-bg: var(--tone-warning-bg);
+  --color-warning-fg: var(--tone-warning-fg);
+  --color-danger-bg: var(--tone-danger-bg);
+  --color-danger-fg: var(--tone-danger-fg);
+  --color-info-bg: var(--tone-info-bg);
+  --color-info-fg: var(--tone-info-fg);
 
-  --font-sans: var(--font-instrument);
-  --font-serif: var(--font-instrument-serif);
-  --font-mono: var(--font-jetbrains-mono);
+  --font-sans: var(--font);
+  --font-display: var(--font-display);
+  --font-mono: var(--mono);
 
-  --shadow-card: 0 1px 2px rgb(28 25 23 / 0.04), 0 1px 3px rgb(28 25 23 / 0.06);
-  --shadow-card-hover: 0 4px 10px -4px rgb(28 25 23 / 0.14),
-    0 2px 4px rgb(28 25 23 / 0.05);
-  --radius-card: 0.875rem;
+  /* tokens.css owns --radius-sm/md/lg with Vela meanings; pin Tailwind's scale so rounded-* stays standard. */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+
+  --shadow-card: var(--shadow-raised);
+  --shadow-card-hover: var(--shadow-lift);
+  --shadow-overlay: var(--shadow-overlay);
 }
 
 @keyframes indeterminate-slide {
-  from {
-    transform: translateX(-100%);
+  from { transform: translateX(-100%); }
+  to { transform: translateX(350%); }
+}
+
+@layer components {
+  /* Product tile: navigable glass card with hover depth on fine pointers. */
+  .mc-product {
+    position: relative;
+    border-radius: 16px;
+    padding: 20px;
+    border: 1px solid var(--edge-product);
+    background: var(--card-product);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    transition: transform var(--dur-card) var(--ease), border-color var(--dur-card) var(--ease), box-shadow var(--dur-card) var(--ease);
   }
-  to {
-    transform: translateX(350%);
+  .mc-product:hover { border-color: var(--accent); }
+  @media (hover: hover) and (pointer: fine) {
+    .mc-product:hover { transform: translateY(-6px); box-shadow: var(--shadow-lift); }
+    .mc-product:active { transform: scale(.97); }
+  }
+  /* Panel: quiet reading/work surface. */
+  .mc-panel {
+    border-radius: 12px;
+    border: 1px solid var(--edge-panel);
+    background: var(--surface);
+  }
+  /* Bento: grouped summary section. */
+  .mc-bento {
+    border-radius: 16px;
+    padding: 24px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .mc-input {
+    width: 100%;
+    min-height: 40px;
+    border-radius: 8px;
+    border: 1px solid var(--border-control);
+    background: var(--bg-base);
+    color: var(--text);
+    padding: 0 12px;
+    font-size: 14px;
+    line-height: 20px;
+    transition: border-color var(--dur-fast) ease;
+  }
+  .mc-input:hover { border-color: var(--text-2); }
+  .mc-input:focus-visible { border-color: var(--focus); }
+  select.mc-input {
+    appearance: none;
+    padding-right: 40px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23A1A1AA' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+  }
+  @media (forced-colors: active) {
+    select.mc-input { appearance: auto; background-image: none; padding-right: 12px; }
+  }
+  .mc-label {
+    display: block;
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 6px;
   }
 }
 
 @layer base {
-  * {
-    box-sizing: border-box;
-  }
-
-  html {
-    scroll-behavior: smooth;
-  }
-
-  body {
-    background-color: var(--bg);
-    color: var(--ink);
-    font-family: var(--font-instrument);
-    -webkit-font-smoothing: antialiased;
-  }
-
-  ::selection {
-    background-color: var(--accent);
-    color: var(--on-accent);
-  }
-
-  button,
-  select,
-  input,
-  textarea {
-    font: inherit;
-  }
-
-  :focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-  }
+  html { scroll-behavior: smooth; }
+  button, select, input, textarea { font: inherit; }
 }
 
-@layer utilities {
-  .font-display {
-    font-family: var(--font-instrument-serif);
-  }
-
-  .text-balance {
-    text-wrap: balance;
-  }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .mc-product:hover, .mc-product:active { transform: none; }
 }

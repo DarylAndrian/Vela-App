@@ -18,12 +18,20 @@ export interface ChartCode {
   id: number;
   title: string;
   mmd_code: string;
-  product_name?: string;
-  product_id?: string;
+  product_name?: string | null;
+  product_id?: string | null;
   protected: boolean;
   created_at: string;
   updated_at: string;
 }
+
+export interface Product {
+  id: string;
+  name: string;
+  color?: string | null;
+}
+
+export type ChartChanges = Partial<Pick<ChartCode, 'title' | 'mmd_code' | 'product_id' | 'product_name'>>;
 
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string; authExpired?: boolean; status?: number };
 
@@ -36,8 +44,11 @@ interface VelaBridge {
     list(): Promise<Result<ChartCode[]>>;
     get(id: number): Promise<Result<ChartCode>>;
     create(title: string, mmd_code?: string): Promise<Result<ChartCode>>;
-    update(id: number, changes: Partial<Pick<ChartCode, 'title' | 'mmd_code'>>): Promise<Result<ChartCode>>;
+    update(id: number, changes: ChartChanges): Promise<Result<ChartCode>>;
     delete(id: number): Promise<Result<void>>;
+  };
+  products: {
+    list(): Promise<Result<Product[]>>;
   };
   files: {
     save(defaultName: string, filters: { name: string; extensions: string[] }[], dataBase64: string): Promise<string | null>;

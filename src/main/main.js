@@ -197,6 +197,8 @@ if (!gotLock) {
       const sample = 'flowchart TD\n  A[Start] --> B{Retry?}\n  B -->|Yes| C[Wait]\n  B -->|No| D[Fail]';
       ipcMain.removeHandler('charts:list');
       ipcMain.handle('charts:list', () => ({ ok: true, data: [chart(1, 'Payment Retry Logic', sample)] }));
+      ipcMain.removeHandler('products:list');
+      ipcMain.handle('products:list', () => ({ ok: true, data: [{ id: 'p1', name: 'Vela', color: '#10b981' }] }));
       ipcMain.removeHandler('charts:update');
       ipcMain.handle('charts:update', (_e, id, changes) => {
         stubCalls.push({ id, ...changes });

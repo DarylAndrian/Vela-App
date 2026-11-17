@@ -41,7 +41,7 @@ export function EditTool() {
         },
       ]}
     >
-      <section className="rounded-2xl border border-line bg-surface p-4 shadow-card sm:p-6">
+      <section className="mc-bento p-4 sm:p-6">
         <EditorMockup
           key={previewUrl ?? 'empty'}
           file={file}

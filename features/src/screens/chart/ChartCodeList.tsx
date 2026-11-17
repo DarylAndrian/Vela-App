@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import type { ChartCode } from '../../lib/ipc';
+import type { ChartCode, Product } from '../../lib/ipc';
+import { ChartThumb } from './ChartThumb';
 import { Spinner } from './Spinner';
 
-export function ChartCodeList({ charts, loading, creating, deleting, onOpen, onCreate, onDelete }: {
+export function ChartCodeList({ charts, products, loading, creating, deleting, onOpen, onCreate, onDelete }: {
   charts: ChartCode[];
+  products: Product[];
   loading: boolean;
   creating: boolean;
   deleting: boolean;
@@ -65,12 +67,12 @@ export function ChartCodeList({ charts, loading, creating, deleting, onOpen, onC
 
       {loading ? (
         <div className="card-panel" style={{ padding: '46px 30px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 13 }}>
-          <span style={{ color: 'var(--accent)', display: 'inline-flex' }}><Spinner size={26} /></span>
-          <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>Loading your charts…</div>
-          <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Syncing with your Vela account</div>
+          <span style={{ color: 'var(--accent-text)', display: 'inline-flex' }}><Spinner size={26} /></span>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>Loading your charts…</div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>Syncing with your Vela account</div>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="card-panel" style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 12.5, lineHeight: 1.7 }}>
+        <div className="card-panel" style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 12, lineHeight: 1.7 }}>
           {charts.length === 0 ? (
             <>No charts in your account yet.<br />Click <b style={{ color: 'var(--text-2)' }}>New chart</b> to create your first one.</>
           ) : (
@@ -78,26 +80,25 @@ export function ChartCodeList({ charts, loading, creating, deleting, onOpen, onC
           )}
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 15 }}>
-          {filtered.map((c) => (
-            <div key={c.id} className="card" style={{ '--cat': 'var(--accent)' } as React.CSSProperties} onClick={() => onOpen(c)}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 15 }}>
+          {filtered.map((c) => {
+            const product = products.find((p) => p.id === c.product_id) ?? products.find((p) => p.name === c.product_name);
+            const productName = product?.name ?? c.product_name;
+            return (
+            <div key={c.id} className="card"
+              style={{ '--cat': product?.color || 'var(--accent)', aspectRatio: '1 / 1', display: 'flex', flexDirection: 'column', minWidth: 0 } as React.CSSProperties}
+              onClick={() => onOpen(c)}>
               <div style={{
-                height: 96, borderRadius: 'var(--radius-md)', marginBottom: 12, overflow: 'hidden',
+                flex: 1, minHeight: 0, position: 'relative', borderRadius: 'var(--radius-md)', marginBottom: 12, overflow: 'hidden',
                 background: 'linear-gradient(135deg, var(--surface-2), color-mix(in srgb, var(--accent) 14%, transparent))',
-                border: '1px solid var(--border)', display: 'grid', placeItems: 'center',
+                border: '1px solid var(--border)',
               }}>
-                <svg viewBox="0 0 200 96" style={{ width: '100%', height: '100%' }}>
-                  <rect x="24" y="20" width="52" height="18" rx="5" fill="var(--accent)" opacity=".8" />
-                  <rect x="122" y="56" width="52" height="18" rx="5" fill="var(--accent)" opacity=".8" />
-                  <rect x="80" y="38" width="42" height="18" rx="5" fill="none" stroke="var(--accent)" strokeWidth="1.4" opacity=".9" />
-                  <path d="M76 29 C100 29 90 47 80 47" stroke="var(--accent)" strokeWidth="1.3" fill="none" opacity=".6" />
-                  <path d="M122 47 C140 47 136 65 122 65" stroke="var(--accent)" strokeWidth="1.3" fill="none" opacity=".6" />
-                </svg>
+                <ChartThumb cacheKey={`${c.id}:${c.updated_at}`} source={c.mmd_code} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                <h2 style={{ margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</h2>
+                <h2 style={{ margin: 0, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</h2>
                 {c.protected ? (
-                  <span className="badge gray" style={{ fontSize: 9.5, padding: '3px 8px' }}>Protected</span>
+                  <span className="badge gray" style={{ fontSize: 12, padding: '3px 8px' }}>Protected</span>
                 ) : (
                   <svg viewBox="0 0 24 24"
                     style={{ width: 15, height: 15, fill: 'none', stroke: 'var(--text-3)', strokeWidth: 1.7, cursor: 'pointer', flex: 'none' }}
@@ -105,11 +106,21 @@ export function ChartCodeList({ charts, loading, creating, deleting, onOpen, onC
                   ><title>Delete</title><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>
                 )}
               </div>
-              <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 5 }}>
-                {new Date(c.updated_at).toLocaleString()}
+              <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 5, display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
+                {productName && (
+                  <span style={{
+                    flex: 'none', maxWidth: '55%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    padding: '2px 7px', borderRadius: 999, fontWeight: 600, color: 'var(--cat)',
+                    background: 'color-mix(in srgb, var(--cat) 14%, transparent)',
+                  }}>{productName}</span>
+                )}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {new Date(c.updated_at).toLocaleString()}
+                </span>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

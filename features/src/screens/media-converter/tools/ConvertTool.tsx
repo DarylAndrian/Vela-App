@@ -94,12 +94,12 @@ export function ConvertTool() {
         },
       ]}
     >
-      <section className="rounded-2xl border border-line bg-surface p-5 shadow-card sm:p-6">
+      <section className="mc-bento p-5 sm:p-6">
         <div className="mb-5 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
           <div className="sm:max-w-sm">
             <label
               htmlFor="output-format"
-              className="mb-1.5 block text-sm font-medium text-ink"
+              className="mc-label"
             >
               Output format
             </label>
@@ -107,7 +107,7 @@ export function ConvertTool() {
               id="output-format"
               value={format}
               onChange={(event) => setFormat(event.target.value)}
-              className="w-full rounded-xl border border-line-strong bg-surface px-4 py-3 font-mono text-sm font-medium text-ink outline-none transition focus:border-accent focus:ring-4 focus:ring-accent-soft"
+              className="mc-input"
             >
               {FORMAT_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -143,7 +143,7 @@ export function ConvertTool() {
             />
           )}
 
-          <p className="text-sm leading-6 text-mut">{summary}</p>
+          <p className="text-sm leading-5 text-mut">{summary}</p>
 
           {error && (
             <Alert tone="error">{error}</Alert>

@@ -30,6 +30,10 @@ class ChartCodesApi {
   delete(id) {
     return this.connector.apiFetch(`/api/chart-codes?id=${id}`, { method: 'DELETE' });
   }
+
+  listProducts() {
+    return this.connector.apiFetch('/api/products');
+  }
 }
 
 module.exports = { ChartCodesApi };

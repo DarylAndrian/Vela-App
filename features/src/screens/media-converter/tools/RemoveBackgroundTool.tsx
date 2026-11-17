@@ -170,10 +170,10 @@ export function RemoveBackgroundTool() {
         },
       ]}
     >
-      <section className="rounded-2xl border border-line bg-surface p-5 shadow-card sm:p-6">
+      <section className="mc-bento p-5 sm:p-6">
         <div className="space-y-6">
           <div
-            className="rounded-xl border border-line bg-surface-2 px-4 py-3"
+            className="rounded-xl border border-line bg-base px-4 py-3"
             data-testid="models-status"
           >
             {!models && <p className="text-sm text-mut">Checking AI models...</p>}
@@ -205,18 +205,19 @@ export function RemoveBackgroundTool() {
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-ink">
+            <p id="bg-quality-label" className="mc-label">
               Quality mode
-            </label>
-            <div className="inline-flex gap-1 rounded-xl border border-line bg-surface-2 p-1">
+            </p>
+            <div role="group" aria-labelledby="bg-quality-label" className="inline-flex gap-1 rounded-xl border border-line bg-base p-1">
               <button
                 type="button"
                 onClick={() => setQuality('fast')}
+                aria-pressed={quality === 'fast'}
                 disabled={isProcessing}
-                className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${
+                className={`min-h-8 rounded-lg px-4 text-sm font-medium transition-colors duration-[120ms] disabled:cursor-not-allowed ${
                   quality === 'fast'
-                    ? 'bg-accent text-on-accent'
-                    : 'text-mut hover:text-ink'
+                    ? 'bg-accent-soft text-accent-text'
+                    : 'text-mut hover:bg-hover hover:text-ink'
                 }`}
               >
                 Fast
@@ -224,11 +225,12 @@ export function RemoveBackgroundTool() {
               <button
                 type="button"
                 onClick={() => setQuality('high')}
+                aria-pressed={quality === 'high'}
                 disabled={isProcessing}
-                className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${
+                className={`min-h-8 rounded-lg px-4 text-sm font-medium transition-colors duration-[120ms] disabled:cursor-not-allowed ${
                   quality === 'high'
-                    ? 'bg-accent text-on-accent'
-                    : 'text-mut hover:text-ink'
+                    ? 'bg-accent-soft text-accent-text'
+                    : 'text-mut hover:bg-hover hover:text-ink'
                 }`}
               >
                 High quality
@@ -258,10 +260,10 @@ export function RemoveBackgroundTool() {
             <div>
               <div className="mb-5 flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <h3 className="truncate text-base font-semibold text-ink">
+                  <h3 className="truncate text-lg leading-6 font-semibold text-ink">
                     {file.name}
                   </h3>
-                  <p className="font-mono text-xs text-mut">
+                  <p className="text-xs font-medium tabular-nums text-mut">
                     {(file.size / (1024 * 1024)).toFixed(2)} MB
                   </p>
                 </div>
@@ -278,7 +280,7 @@ export function RemoveBackgroundTool() {
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <p className="text-sm font-medium text-ink">Original</p>
-                  <div className="relative aspect-video overflow-hidden rounded-xl border border-line bg-surface-2">
+                  <div className="relative aspect-video overflow-hidden rounded-xl border border-line bg-base">
                     <img
                       src={originalUrl}
                       alt="Original"
@@ -290,7 +292,7 @@ export function RemoveBackgroundTool() {
                 <div className="space-y-2">
                   <p className="text-sm font-medium text-ink">Result</p>
                   <div
-                    className={`relative aspect-video overflow-hidden rounded-xl border border-line ${resultUrl ? '' : 'bg-surface-2'}`}
+                    className={`relative aspect-video overflow-hidden rounded-xl border border-line ${resultUrl ? '' : 'bg-base'}`}
                     style={
                       resultUrl
                         ? { backgroundImage: `url(${CHECKERBOARD})` }
@@ -364,7 +366,7 @@ export function RemoveBackgroundTool() {
               )}
 
               {resultUrl && !isProcessing && (
-                <p className="mt-4 text-center font-mono text-xs text-mut">
+                <p className="mt-4 text-center text-xs font-medium text-mut">
                   Processed locally with
                   {quality === 'fast'
                     ? ' basic edge smoothing'

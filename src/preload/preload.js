@@ -59,6 +59,9 @@ contextBridge.exposeInMainWorld('vela', {
     update: (id, changes) => ipcRenderer.invoke('charts:update', id, changes),
     delete: (id) => ipcRenderer.invoke('charts:delete', id),
   },
+  products: {
+    list: () => ipcRenderer.invoke('products:list'),
+  },
   files: {
     save: (defaultName, filters, dataBase64) => ipcRenderer.invoke('files:save', { defaultName, filters, dataBase64 }),
     openImages: () => ipcRenderer.invoke('files:open-images'),

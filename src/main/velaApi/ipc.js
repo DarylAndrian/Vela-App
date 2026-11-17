@@ -76,6 +76,7 @@ function registerIpc({ notify: notifyFn }) {
   ipcMain.handle('charts:create', wrap((title, mmd_code) => chartsApiAfter().create(title, mmd_code)));
   ipcMain.handle('charts:update', wrap((id, changes) => chartsApiAfter().update(id, changes)));
   ipcMain.handle('charts:delete', wrap((id) => chartsApiAfter().delete(id)));
+  ipcMain.handle('products:list', wrap(() => chartsApiAfter().listProducts()));
 
   ipcMain.handle('files:save', async (_e, { defaultName, filters, dataBase64 }) => {
     const win = viewManager.getView() || undefined;

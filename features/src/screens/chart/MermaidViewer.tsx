@@ -179,12 +179,12 @@ export function MermaidViewer({ source, layout, renderKey, onStyleChange, onTogg
   return (
     <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, position: 'relative' }}>
       <div style={{ padding: '9px 13px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.7px', color: 'var(--text-3)', textTransform: 'uppercase', marginRight: 4 }}>Preview</span>
-        <div className="chip" style={{ padding: '4.5px 11px', fontSize: 10.5 }} onClick={autoFit}>Auto Fit</div>
+        <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.7px', color: 'var(--text-3)', textTransform: 'uppercase', marginRight: 4 }}>Preview</span>
+        <div className="chip" style={{ padding: '4.5px 11px', fontSize: 12 }} onClick={autoFit}>Auto Fit</div>
         <select
           value={zoom >= 2.5 ? 3 : zoom >= 1.75 ? 2 : zoom >= 1.25 ? 1.5 : 1}
           onChange={(e) => setZoom(Number(e.target.value))}
-          style={{ height: 27, borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text-2)', fontSize: 10.5, fontFamily: 'var(--font)', padding: '0 7px' }}
+          style={{ height: 27, borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text-2)', fontSize: 12, fontFamily: 'var(--font)', padding: '0 7px' }}
         >
           <option value={1}>100%</option>
           <option value={1.5}>150%</option>
@@ -192,7 +192,7 @@ export function MermaidViewer({ source, layout, renderKey, onStyleChange, onTogg
           <option value={3}>300%</option>
         </select>
         <div style={{ flex: 1 }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10.5, color: 'var(--text-3)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-3)' }}>
           ELK
           <div
             onClick={onToggleLayout}
@@ -215,7 +215,7 @@ export function MermaidViewer({ source, layout, renderKey, onStyleChange, onTogg
 
       {error && (
         <div style={{
-          margin: '10px 13px 0', padding: '10px 14px', borderRadius: 'var(--radius-sm)', fontSize: 11.5,
+          margin: '10px 13px 0', padding: '10px 14px', borderRadius: 'var(--radius-sm)', fontSize: 12,
           color: 'var(--red)', background: 'color-mix(in srgb, var(--red) 12%, transparent)',
           border: '1px solid color-mix(in srgb, var(--red) 32%, transparent)',
         }}>Could not render: {error}</div>
@@ -231,7 +231,7 @@ export function MermaidViewer({ source, layout, renderKey, onStyleChange, onTogg
             background: 'color-mix(in srgb, var(--surface) 72%, transparent)', backdropFilter: 'blur(2px)',
           }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-              <span style={{ color: 'var(--accent)', display: 'inline-flex' }}><Spinner size={26} /></span>
+              <span style={{ color: 'var(--accent-text)', display: 'inline-flex' }}><Spinner size={26} /></span>
               <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>Rendering diagram…</div>
             </div>
           </div>

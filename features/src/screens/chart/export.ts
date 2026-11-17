@@ -59,8 +59,7 @@ function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
-/** Rasterize the chart SVG to PNG/JPEG and save via the native save dialog. */
-export async function exportRaster(format: 'png' | 'jpeg', isDark: boolean, title: string, chartId?: number): Promise<string> {
+async function rasterize(format: 'png' | 'jpeg', isDark: boolean): Promise<Blob> {
   const measured = measureMermaidSvg();
   if (!measured) throw new Error('Could not find the chart preview. Make sure it has finished rendering.');
   const { svg, width, height } = measured;
@@ -79,7 +78,7 @@ export async function exportRaster(format: 'png' | 'jpeg', isDark: boolean, titl
   const svgString = new XMLSerializer().serializeToString(cloned);
   const encoded = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgString)));
 
-  const blob = await new Promise<Blob>((resolve, reject) => {
+  return new Promise<Blob>((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
       ctx.drawImage(img, padding, padding, width, height);
@@ -93,7 +92,11 @@ export async function exportRaster(format: 'png' | 'jpeg', isDark: boolean, titl
     img.onerror = () => reject(new Error('Failed to render chart to image.'));
     img.src = encoded;
   });
+}
 
+/** Rasterize the chart SVG to PNG/JPEG and save via the native save dialog. */
+export async function exportRaster(format: 'png' | 'jpeg', isDark: boolean, title: string, chartId?: number): Promise<string> {
+  const blob = await rasterize(format, isDark);
   const ext = format === 'jpeg' ? 'jpg' : 'png';
   const saved = await vela().files.save(
     `${safeFilename(title, chartId)}.${ext}`,
@@ -102,6 +105,10 @@ export async function exportRaster(format: 'png' | 'jpeg', isDark: boolean, titl
   );
   if (!saved) throw new Error('SAVE_CANCELLED');
   return saved;
+}
+
+export async function copyPngToClipboard(isDark: boolean): Promise<void> {
+  await vela().clipboard.writeImage(await blobToBase64(await rasterize('png', isDark)));
 }
 
 /** Save the raw SVG (vector) via the native save dialog. */

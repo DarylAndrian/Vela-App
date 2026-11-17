@@ -55,7 +55,7 @@ export function ConnectScreen() {
       <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 18, alignItems: 'start' }}>
         <div className="card-panel" style={{ padding: 22 }}>
           <h3 style={{ fontSize: 14, marginBottom: 4 }}>How to connect</h3>
-          <p style={{ fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.6, marginBottom: 14 }}>
+          <p style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.6, marginBottom: 14 }}>
             Takes about a minute.
           </p>
           {[
@@ -67,11 +67,11 @@ export function ConnectScreen() {
               <div style={{
                 width: 22, height: 22, flex: 'none', borderRadius: 7,
                 background: 'color-mix(in srgb, var(--accent) 16%, transparent)',
-                color: 'var(--accent)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700,
+                color: 'var(--accent-text)', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700,
               }}>{n}</div>
               <div>
-                <div style={{ fontSize: 12, fontWeight: 650 }}>{title}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.55 }}>{sub}</div>
+                <div style={{ fontSize: 12, fontWeight: 600 }}>{title}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.55 }}>{sub}</div>
               </div>
             </div>
           ))}
@@ -82,27 +82,27 @@ export function ConnectScreen() {
         </div>
 
         {state === 'loading' && (
-          <div className="card-panel" style={{ padding: 26, color: 'var(--text-3)', fontSize: 12.5 }}>
+          <div className="card-panel" style={{ padding: 26, color: 'var(--text-3)', fontSize: 12 }}>
             Checking connection…
           </div>
         )}
 
         {state === 'disconnected' && (
           <div className="card-panel" style={{ padding: 26 }}>
-            <h2 style={{ fontSize: 17, marginBottom: 5 }}>Connect your Vela account</h2>
+            <h2 style={{ fontSize: 18, marginBottom: 5 }}>Connect your Vela account</h2>
             <p style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.65, marginBottom: 19, maxWidth: 520 }}>
               Paste the connection token generated on the Vela web app to sync your Chart Code library.
             </p>
             {notice && (
               <div style={{
-                padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 15, fontSize: 11.5,
+                padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 15, fontSize: 12,
                 color: 'var(--amber)', background: 'color-mix(in srgb, var(--amber) 12%, transparent)',
                 border: '1px solid color-mix(in srgb, var(--amber) 32%, transparent)',
               }}>{notice}</div>
             )}
             {error && (
               <div style={{
-                padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 15, fontSize: 11.5,
+                padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 15, fontSize: 12,
                 color: 'var(--red)', background: 'color-mix(in srgb, var(--red) 12%, transparent)',
                 border: '1px solid color-mix(in srgb, var(--red) 32%, transparent)',
               }}>{error}</div>
@@ -120,7 +120,7 @@ export function ConnectScreen() {
               <button className="btn primary" disabled={busy || !token.trim()} onClick={onConnect}>
                 {busy ? 'Connecting…' : 'Connect'}
               </button>
-              <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Verified against the Vela API before saving</span>
+              <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Verified against the Vela API before saving</span>
             </div>
           </div>
         )}
@@ -131,28 +131,28 @@ export function ConnectScreen() {
               <div style={{
                 width: 52, height: 52, flex: 'none', borderRadius: 15,
                 background: 'linear-gradient(135deg, var(--brand-a), var(--brand-b))',
-                display: 'grid', placeItems: 'center', fontSize: 19, fontWeight: 700, color: 'var(--on-accent)',
+                display: 'grid', placeItems: 'center', fontSize: 18, fontWeight: 700, color: 'var(--on-accent)',
               }}>{status.identity.username.slice(0, 1).toUpperCase()}</div>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                  <h2 style={{ fontSize: 17 }}>{status.identity.username}</h2>
+                  <h2 style={{ fontSize: 18 }}>{status.identity.username}</h2>
                   <span className="badge green"><span className="dot" />Connected</span>
                 </div>
-                <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>
                   Role: {status.identity.role} · scope: products · synced with Vela web &amp; mobile
                 </div>
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 19 }}>
               <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '13px 15px' }}>
-                <div style={{ fontSize: 10.5, color: 'var(--text-3)', letterSpacing: '.6px', textTransform: 'uppercase', fontWeight: 700 }}>Token expires</div>
-                <div style={{ fontSize: 14, fontWeight: 650, marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-3)', letterSpacing: '.6px', textTransform: 'uppercase', fontWeight: 700 }}>Token expires</div>
+                <div style={{ fontSize: 14, fontWeight: 600, marginTop: 4 }}>
                   {status.daysRemaining !== null ? `In ${status.daysRemaining} days` : 'Unknown'}
                 </div>
               </div>
               <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '13px 15px' }}>
-                <div style={{ fontSize: 10.5, color: 'var(--text-3)', letterSpacing: '.6px', textTransform: 'uppercase', fontWeight: 700 }}>Vela site</div>
-                <div style={{ fontSize: 14, fontWeight: 650, marginTop: 4 }}>{status.baseUrl}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-3)', letterSpacing: '.6px', textTransform: 'uppercase', fontWeight: 700 }}>Vela site</div>
+                <div style={{ fontSize: 14, fontWeight: 600, marginTop: 4 }}>{status.baseUrl}</div>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 10 }}>

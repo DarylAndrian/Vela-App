@@ -120,7 +120,7 @@ export function TaiwanYearScreen() {
             width: 56, height: 56, borderRadius: 14, margin: '0 auto 20px',
             background: 'color-mix(in srgb, var(--accent) 18%, transparent)',
             border: '1px solid color-mix(in srgb, var(--accent) 35%, transparent)',
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-text)',
           }}>
             <YearIcon />
           </div>
@@ -152,7 +152,7 @@ export function TaiwanYearScreen() {
           </div>
 
           <div id="minguoResult" style={resultBox(convertedMinguo !== null)}>
-            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>
+            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--accent-text)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>
               Minguo (民國) Year
             </div>
             <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.02em' }}>
@@ -160,7 +160,7 @@ export function TaiwanYearScreen() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '28px 0', color: 'var(--text-3)', fontSize: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '28px 0', color: 'var(--text-3)', fontSize: 12 }}>
             <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
             or
             <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
@@ -186,7 +186,7 @@ export function TaiwanYearScreen() {
           </div>
 
           <div id="gregorianResult" style={resultBox(convertedGregorian !== null)}>
-            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>
+            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--accent-text)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>
               Gregorian Year
             </div>
             <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.02em' }}>
@@ -194,7 +194,7 @@ export function TaiwanYearScreen() {
             </div>
           </div>
 
-          <p style={{ marginTop: 28, paddingTop: 20, borderTop: '1px solid var(--border)', fontSize: '0.75rem', color: 'var(--text-3)', lineHeight: 1.6 }}>
+          <p style={{ marginTop: 28, paddingTop: 20, borderTop: '1px solid var(--border)', fontSize: 12, color: 'var(--text-3)', lineHeight: 1.6 }}>
             Formula: <code style={{ background: 'var(--surface-2)', padding: '0.15em 0.4em', borderRadius: 4, fontFamily: 'var(--mono)', fontSize: '0.8em', color: 'var(--text-2)' }}>Gregorian = Minguo + 1911</code>
             <br />
             The Minguo calendar starts from 1912, the founding of the Republic of China.

@@ -47,7 +47,7 @@ function Range({ label, unit, min, max, step, value, onChange }: {
   label: string; unit: string; min: number; max: number; step?: number; value: number; onChange: (v: number) => void;
 }) {
   return (
-    <Field label={<span>{label} — <span style={{ color: 'var(--accent)', fontFamily: 'var(--mono)' }}>{value}{unit}</span></span>}>
+    <Field label={<span>{label} — <span style={{ color: 'var(--accent-text)', fontFamily: 'var(--mono)' }}>{value}{unit}</span></span>}>
       <input
         type="range"
         min={min}
@@ -67,7 +67,7 @@ export function SettingsPanel({ settings, onChange }: {
 }) {
   return (
     <div className="card-panel" style={{ padding: '17px 18px' }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.7px', color: 'var(--text-3)', textTransform: 'uppercase', marginBottom: 13 }}>Layout</div>
+      <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.7px', color: 'var(--text-3)', textTransform: 'uppercase', marginBottom: 13 }}>Layout</div>
 
       <Field label="Mode">
         <Chips options={['Row', 'Wrap']} value={settings.mode === 'row' ? 'Row' : 'Wrap'}
@@ -79,8 +79,8 @@ export function SettingsPanel({ settings, onChange }: {
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 13 }}>
         <div>
-          <div style={{ fontSize: 11.5, fontWeight: 650, color: 'var(--text-2)' }}>Match heights</div>
-          <div style={{ fontSize: 10, color: 'var(--text-3)' }}>Scale to row's shortest image</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>Match heights</div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>Scale to row's shortest image</div>
         </div>
         <Toggle on={settings.matchHeights} onChange={(v) => onChange({ matchHeights: v })} />
       </div>
@@ -91,7 +91,7 @@ export function SettingsPanel({ settings, onChange }: {
         onChange={(v) => onChange({ padding: v })} />
 
       <div style={{ height: 1, background: 'var(--border)', margin: '15px 0' }} />
-      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.7px', color: 'var(--text-3)', textTransform: 'uppercase', marginBottom: 13 }}>Arrows</div>
+      <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.7px', color: 'var(--text-3)', textTransform: 'uppercase', marginBottom: 13 }}>Arrows</div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9 }}>
         <Field label="Color">
@@ -99,7 +99,7 @@ export function SettingsPanel({ settings, onChange }: {
             <input type="color" value={settings.arrowColor}
               onChange={(e) => onChange({ arrowColor: e.target.value })}
               style={{ width: 18, height: 18, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }} />
-            <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--text-2)' }}>{settings.arrowColor}</span>
+            <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text-2)' }}>{settings.arrowColor}</span>
           </div>
         </Field>
         <Field label="Thickness">
@@ -111,7 +111,7 @@ export function SettingsPanel({ settings, onChange }: {
         onChange={(v) => onChange({ arrowHeadSize: v })} />
 
       <div style={{ height: 1, background: 'var(--border)', margin: '15px 0' }} />
-      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.7px', color: 'var(--text-3)', textTransform: 'uppercase', marginBottom: 13 }}>Export</div>
+      <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.7px', color: 'var(--text-3)', textTransform: 'uppercase', marginBottom: 13 }}>Export</div>
 
       <Field label="Format">
         <Chips options={['PNG', 'JPEG']} value={settings.format === 'png' ? 'PNG' : 'JPEG'}
@@ -129,7 +129,7 @@ export function SettingsPanel({ settings, onChange }: {
             <input type="color" value={settings.background === 'transparent' ? '#ffffff' : settings.background}
               onChange={(e) => onChange({ background: e.target.value })}
               style={{ width: 18, height: 18, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }} />
-            <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--text-2)' }}>{settings.background}</span>
+            <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text-2)' }}>{settings.background}</span>
           </div>
         </Field>
         <div className="chip" style={{ marginBottom: 15 }}
