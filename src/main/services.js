@@ -67,6 +67,28 @@ const SERVICES = [
       'D:\\ai-and-code\\VelaIsland\\artifacts\\publish\\VelaDynamic.exe',
     ].filter(Boolean),
     skipIfRunning: false,
+    installer: {
+      url: 'https://vela.example.com/installers/VelaIsland-Setup.exe',
+      fileName: 'VelaIsland-Setup.exe',
+    },
+    // CLI contract with VelaIsland: GNU-style long flags, one argv element per
+    // flag, booleans as literal on|off; --position in
+    // top-left|top-right|bottom-left|bottom-right; --opacity 40-100; --hotkey a
+    // +-joined chord. VelaIsland must ignore unknown flags and use its own
+    // defaults for missing ones so older builds stay launchable.
+    buildArgs: (cfg) => {
+      const s = config.islandSettings(cfg);
+      const onOff = (b) => (b ? 'on' : 'off');
+      return [
+        `--widget-media=${onOff(s.widgets.media)}`,
+        `--widget-clock=${onOff(s.widgets.clock)}`,
+        `--widget-shelf=${onOff(s.widgets.shelf)}`,
+        `--widget-todos=${onOff(s.widgets.todos)}`,
+        `--hotkey=${s.hotkey}`,
+        `--opacity=${s.opacity}`,
+        `--position=${s.position}`,
+      ];
+    },
   },
   {
     id: 'velazoom',
@@ -83,6 +105,10 @@ const SERVICES = [
       'D:\\ai-and-code\\VelaZoom\\publish\\VelaZoom.exe',
     ].filter(Boolean),
     skipIfRunning: true,
+    installer: {
+      url: 'https://vela.example.com/installers/VelaZoom-Setup.exe',
+      fileName: 'VelaZoom-Setup.exe',
+    },
   },
 ];
 
@@ -105,7 +131,7 @@ function computeState(svc, cfg) {
 
 function listWithStates(cfg) {
   return SERVICES.map((svc) => {
-    const { candidates, ...publicPart } = svc;
+    const { candidates, installer, buildArgs, ...publicPart } = svc;
     return { ...publicPart, state: computeState(svc, cfg) };
   });
 }

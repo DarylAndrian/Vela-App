@@ -10,9 +10,9 @@ function isRunning(exeName) {
   });
 }
 
-function trySpawn(exePath) {
+function trySpawn(exePath, args = []) {
   return new Promise((resolve, reject) => {
-    const child = spawn(exePath, [], { detached: true, stdio: 'ignore', windowsHide: false });
+    const child = spawn(exePath, args, { detached: true, stdio: 'ignore', windowsHide: false });
     child.on('error', reject);
     child.on('spawn', () => {
       child.unref();
@@ -21,7 +21,7 @@ function trySpawn(exePath) {
   });
 }
 
-async function launch(svc, cfg) {
+async function launch(svc, cfg, args = []) {
   const candidates = [cfg[svc.exeKey], ...svc.candidates].filter(Boolean);
   const existing = candidates.filter((p) => {
     try {
@@ -42,14 +42,18 @@ async function launch(svc, cfg) {
   let lastError = null;
   for (const exePath of existing) {
     try {
-      await trySpawn(exePath);
+      await trySpawn(exePath, args);
       return { alreadyRunning: running, exePath };
     } catch (err) {
       lastError = err;
     }
-    const shellError = await shell.openPath(exePath);
-    if (!shellError) return { alreadyRunning: running, exePath, viaShell: true };
-    lastError = new Error(shellError);
+    // shell.openPath can't carry argv, so it would drop launch settings — only
+    // use it as a fallback for plain launches.
+    if (!args.length) {
+      const shellError = await shell.openPath(exePath);
+      if (!shellError) return { alreadyRunning: running, exePath, viaShell: true };
+      lastError = new Error(shellError);
+    }
   }
   throw new Error(`Couldn't launch ${svc.exeName} (${lastError ? lastError.message : 'unknown error'}). If Windows blocked this copy, use “Locate file…” to pick another one.`);
 }

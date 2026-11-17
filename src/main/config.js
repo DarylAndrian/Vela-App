@@ -7,6 +7,12 @@ const DEFAULTS = {
   velaIslandPath: '',
   velaZoomPath: '',
   theme: 'system',
+  velaIslandSettings: {
+    widgets: { media: true, clock: true, shelf: true, todos: true },
+    hotkey: 'Ctrl+Alt+I',
+    opacity: 90,
+    position: 'top-right',
+  },
 };
 
 function configPath() {
@@ -41,4 +47,13 @@ function resolveTool(cfg, key, candidates) {
   }) || null;
 }
 
-module.exports = { DEFAULTS, configPath, load, save, resolveTool };
+function islandSettings(cfg) {
+  const saved = (cfg && cfg.velaIslandSettings) || {};
+  return {
+    ...DEFAULTS.velaIslandSettings,
+    ...saved,
+    widgets: { ...DEFAULTS.velaIslandSettings.widgets, ...(saved.widgets || {}) },
+  };
+}
+
+module.exports = { DEFAULTS, configPath, load, save, resolveTool, islandSettings };

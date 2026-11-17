@@ -315,6 +315,71 @@
   .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
   .divider { height: 1px; background: var(--border); margin: 20px 0 17px; }
 
+  /* ---------- Install / guide / island modals ---------- */
+  .badge.installing  { color: var(--cyan); background: color-mix(in srgb, var(--cyan) 12%, transparent); border-color: color-mix(in srgb, var(--cyan) 32%, transparent); }
+  .badge.installing .dot { animation: pulse 1.1s ease-in-out infinite; }
+
+  .card-actions { display: none; gap: 8px; margin-top: 13px; }
+  .card[data-state="unavailable"] .card-actions { display: flex; }
+  .card[data-state="unavailable"] .card-actions .card-action { display: block; flex: 1; width: auto; margin-top: 0; }
+  .card-action.primary-action { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .card-action.primary-action:hover { filter: brightness(1.08); background: var(--accent); }
+  .card-action.secondary-action {
+    background: transparent; color: var(--text-2); border-color: var(--border);
+    font-weight: 550;
+  }
+  .card-action.secondary-action:hover { color: var(--text); background: var(--surface-2); }
+
+  .install-progress {
+    height: 8px; border-radius: 99px; background: var(--bar); overflow: hidden; margin: 6px 0 9px;
+  }
+  .install-progress-fill {
+    height: 100%; width: 0%; border-radius: 99px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    transition: width .25s ease;
+  }
+  .install-bytes { font-size: 11px; color: var(--text-3); font-family: var(--mono); margin-bottom: 16px; min-height: 15px; }
+
+  .guide-steps { display: flex; flex-direction: column; margin-bottom: 20px; }
+  .guide-step {
+    display: flex; align-items: flex-start; gap: 12px; padding: 11px 2px;
+    border-bottom: 1px solid var(--border);
+  }
+  .guide-step:last-child { border-bottom: none; }
+  .guide-step .num {
+    width: 24px; height: 24px; border-radius: 50%; flex: none; margin-top: 1px;
+    display: grid; place-items: center; font-size: 11px; font-weight: 700;
+    color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+  }
+  .guide-step .step-title { font-size: 12.5px; font-weight: 650; }
+  .guide-step .step-sub { font-size: 12px; color: var(--text-2); line-height: 1.5; margin-top: 2px; }
+
+  .toggle-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 2px; border-bottom: 1px solid var(--border); font-size: 12.5px; color: var(--text-2);
+  }
+  .toggle-row:last-child { border-bottom: none; }
+  .toggle {
+    width: 38px; height: 21px; border-radius: 99px; border: 1px solid var(--border-strong);
+    background: var(--surface-2); cursor: pointer; position: relative; flex: none;
+    transition: all .18s var(--ease);
+  }
+  .toggle::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px;
+    border-radius: 50%; background: var(--text-3); transition: all .18s var(--ease);
+  }
+  .toggle[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--accent) 85%, transparent); border-color: var(--accent);
+  }
+  .toggle[aria-pressed="true"]::after { left: 19px; background: var(--on-accent); }
+
+  .range-label { font-size: 11.5px; color: var(--text-2); margin-bottom: 5px; }
+  .field input[type="range"] {
+    width: 100%; height: 22px; accent-color: var(--accent); cursor: pointer; padding: 0;
+    border: none; background: none;
+  }
+
   /* ---------- Toast ---------- */
   .toast {
     position: fixed; left: 50%; bottom: 32px; transform: translate(-50%, 20px);

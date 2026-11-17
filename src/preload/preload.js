@@ -11,6 +11,16 @@ contextBridge.exposeInMainWorld('launcher', {
   locate: (kind) => ipcRenderer.invoke('dialog:locate', kind),
   revealConfig: () => ipcRenderer.invoke('config:reveal'),
   onEvent: (cb) => ipcRenderer.on('service:state', (_e, payload) => cb(payload)),
+  installer: {
+    install: (id) => ipcRenderer.invoke('installer:install', id),
+    cancel: (id) => ipcRenderer.invoke('installer:cancel', id),
+    status: (id) => ipcRenderer.invoke('installer:status', id),
+    onProgress: (cb) => {
+      const listener = (_e, payload) => cb(payload);
+      ipcRenderer.on('installer:progress', listener);
+      return () => ipcRenderer.removeListener('installer:progress', listener);
+    },
+  },
   media: {
     imageConvert: (req) => ipcRenderer.invoke('media:image-convert', req),
     imageCompress: (req) => ipcRenderer.invoke('media:image-compress', req),

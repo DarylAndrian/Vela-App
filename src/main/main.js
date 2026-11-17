@@ -9,6 +9,7 @@ const velaApi = require('./velaApi/ipc');
 const mediaEngine = require('./mediaEngine');
 const imageEngine = require('./imageEngine');
 const modelCache = require('./modelCache');
+const installer = require('./installer');
 
 featuresProtocol.registerPrivileged();
 const FEATURES_DEV = process.argv.includes('--features-dev') || process.env.VELA_FEATURES_DEV === '1';
@@ -74,7 +75,8 @@ if (!gotLock) {
       }
       case 'external': {
         try {
-          const result = await externalApps.launch(svc, cfg);
+          const args = svc.buildArgs ? svc.buildArgs(cfg) : [];
+          const result = await externalApps.launch(svc, cfg, args);
           send('service:state', { type: result.alreadyRunning ? 'already-running' : 'running', id });
         } catch (err) {
           send('service:state', { type: 'not-found', id, message: err.message || String(err) });
@@ -122,6 +124,7 @@ if (!gotLock) {
     mediaEngine.registerIpc({ notify, getWindow: () => win });
     imageEngine.registerIpc();
     modelCache.registerIpc({ notify });
+    installer.registerIpc({ notify });
   }
 
   async function runSmoke() {
@@ -753,6 +756,107 @@ if (!gotLock) {
         const isnetSize = (() => { try { return fs.statSync(path.join(modelDir, 'resources.json')).size > 0 ? JSON.parse(fs.readFileSync(path.join(modelDir, 'resources.json'), 'utf8'))['/models/isnet'].size : 0; } catch { return 0; } })();
         check('tier-2 high model + inference (VELA_SMOKE_HIGH)', highRun.ok === true && isnetSize === 176149806, JSON.stringify(highRun).slice(0, 160));
       }
+
+      // VelaIsland buildArgs CLI mapping.
+      const islandSvc = services.byId('velaisland');
+      const defaultArgs = islandSvc.buildArgs({});
+      check('velaisland buildArgs defaults', defaultArgs.includes('--widget-media=on') && defaultArgs.includes('--widget-todos=on')
+        && defaultArgs.includes('--opacity=90') && defaultArgs.includes('--position=top-right') && defaultArgs.includes('--hotkey=Ctrl+Alt+I'), defaultArgs.join(' '));
+      const customArgs = islandSvc.buildArgs({ velaIslandSettings: { widgets: { todos: false }, opacity: 60, position: 'bottom-left', hotkey: 'Ctrl+Shift+I' } });
+      check('velaisland buildArgs maps overrides', customArgs.includes('--widget-todos=off') && customArgs.includes('--widget-media=on')
+        && customArgs.includes('--opacity=60') && customArgs.includes('--position=bottom-left') && customArgs.includes('--hotkey=Ctrl+Shift+I')
+        && !customArgs.includes('--widget-todos=on'), customArgs.join(' '));
+      check('listWithStates hides private fields', list.every((s) => s.installer === undefined && s.buildArgs === undefined && s.candidates === undefined));
+
+      // Installer downloadFile against an in-process HTTP server.
+      const http = require('http');
+      const installerTmp = path.join(app.getPath('userData'), 'installer-test');
+      fs.mkdirSync(installerTmp, { recursive: true });
+      const payload = Buffer.alloc(262144, 7);
+      const goodServer = http.createServer((_req, res) => {
+        res.writeHead(200, { 'Content-Length': payload.length });
+        let offset = 0;
+        const push = () => {
+          if (offset >= payload.length) { res.end(); return; }
+          res.write(payload.subarray(offset, offset + 16384));
+          offset += 16384;
+          setTimeout(push, 5);
+        };
+        push();
+      });
+      await new Promise((r) => goodServer.listen(0, '127.0.0.1', r));
+      const goodDest = path.join(installerTmp, 'good.exe');
+      const progCalls = [];
+      let goodErr = null;
+      try {
+        await installer.downloadFile(`http://127.0.0.1:${goodServer.address().port}/setup.exe`, goodDest, (got, total) => progCalls.push({ got, total }));
+      } catch (err) {
+        goodErr = err;
+      }
+      goodServer.close();
+      const monotonic = progCalls.every((p, i) => i === 0 || p.got > progCalls[i - 1].got);
+      check('installer downloadFile streams + atomic rename', !goodErr && fs.existsSync(goodDest) && fs.statSync(goodDest).size === 262144
+        && progCalls.length > 3 && monotonic && !fs.existsSync(`${goodDest}.part`),
+        JSON.stringify({ err: goodErr && goodErr.message, calls: progCalls.length }));
+
+      const badServer = http.createServer((_req, res) => { res.writeHead(500); res.end('nope'); });
+      await new Promise((r) => badServer.listen(0, '127.0.0.1', r));
+      const badDest = path.join(installerTmp, 'bad.exe');
+      let badRejected = false;
+      try {
+        await installer.downloadFile(`http://127.0.0.1:${badServer.address().port}/setup.exe`, badDest, () => {});
+      } catch {
+        badRejected = true;
+      }
+      badServer.close();
+      check('installer downloadFile failure cleans .part', badRejected && !fs.existsSync(badDest) && !fs.existsSync(`${badDest}.part`));
+      fs.rmSync(installerTmp, { recursive: true, force: true });
+
+      // Launcher UI: guide modal, island settings round-trip, install modal.
+      const guideState = await win.webContents.executeJavaScript(`(() => {
+        openGuide('velazoom');
+        const out = {
+          visible: document.getElementById('guideModal').classList.contains('visible'),
+          steps: document.querySelectorAll('#guideSteps .guide-step').length,
+          title: document.getElementById('guideTitle').textContent,
+        };
+        closeGuide();
+        out.closed = !document.getElementById('guideModal').classList.contains('visible');
+        return out;
+      })()`);
+      check('guide modal renders 5 VelaZoom steps', guideState.visible && guideState.closed && guideState.steps === 5 && guideState.title.includes('VelaZoom'), JSON.stringify(guideState));
+
+      const islandUi = await win.webContents.executeJavaScript(`(async () => {
+        openIslandSettings(false);
+        const visible = document.getElementById('islandModal').classList.contains('visible');
+        document.getElementById('islWidgetMedia').setAttribute('aria-pressed', 'false');
+        document.getElementById('islOpacity').value = 60;
+        document.getElementById('islHotkey').value = 'Ctrl+Shift+I';
+        const collected = collectIslandSettings();
+        closeIslandSettings();
+        await window.launcher.saveConfig({ ...cfg, velaIslandSettings: collected });
+        const read = await window.launcher.getConfig();
+        await window.launcher.saveConfig({ ...cfg, velaIslandSettings: ISLAND_DEFAULTS });
+        const reset = await window.launcher.getConfig();
+        return { visible, collected, stored: read.velaIslandSettings, restored: reset.velaIslandSettings };
+      })()`);
+      check('island settings round-trip to config.json', islandUi.visible
+        && islandUi.collected.widgets.media === false && islandUi.collected.opacity === 60 && islandUi.collected.hotkey === 'Ctrl+Shift+I'
+        && islandUi.stored.widgets.media === false && islandUi.stored.opacity === 60 && islandUi.stored.hotkey === 'Ctrl+Shift+I'
+        && islandUi.restored.widgets.media === true && islandUi.restored.opacity === 90, JSON.stringify(islandUi).slice(0, 200));
+
+      const installUi = await win.webContents.executeJavaScript(`(async () => {
+        startInstall({ id: 'smoke', name: 'Smoke App' });
+        const out = {
+          visible: document.getElementById('installModal').classList.contains('visible'),
+          retryHidden: document.getElementById('installRetry').hidden,
+        };
+        const cancel = await window.launcher.installer.cancel('smoke');
+        out.idleCancelOk = cancel.ok === false;
+        closeInstall();
+        return out;
+      })()`);
+      check('install modal renders + idle cancel is a no-op', installUi.visible && installUi.retryHidden && installUi.idleCancelOk, JSON.stringify(installUi));
       viewManager.goHome();
     } catch (err) {
       check('smoke crashed', false, err.message);

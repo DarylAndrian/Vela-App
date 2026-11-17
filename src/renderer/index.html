@@ -116,6 +116,67 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="installModal">
+  <div class="modal">
+    <h2 id="installTitle">Installing…</h2>
+    <p class="sub" id="installNote">Downloading the installer…</p>
+    <div class="install-progress"><div class="install-progress-fill" id="installProgressFill"></div></div>
+    <div class="install-bytes" id="installBytes"></div>
+    <div class="modal-actions">
+      <button class="btn" id="installRetry" hidden>Retry</button>
+      <button class="btn" id="installLocate">Locate file instead…</button>
+      <button class="btn primary" id="installCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="guideModal">
+  <div class="modal">
+    <h2 id="guideTitle">How to use VelaZoom</h2>
+    <p class="sub" id="guideSub">Screen zoom &amp; annotation — quick start.</p>
+    <div class="guide-steps" id="guideSteps"></div>
+    <div class="modal-actions">
+      <button class="btn" id="guideLaunch">Launch again</button>
+      <button class="btn primary" id="guideClose">Got it</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="islandModal">
+  <div class="modal">
+    <h2>VelaIsland settings</h2>
+    <p class="sub" id="islandSub">Applied each time VelaIsland starts from the Vela launcher.</p>
+    <div class="field">
+      <label>Widgets</label>
+      <div class="toggle-row"><span>Media now-playing</span><button class="toggle" id="islWidgetMedia" aria-pressed="true"></button></div>
+      <div class="toggle-row"><span>Clock</span><button class="toggle" id="islWidgetClock" aria-pressed="true"></button></div>
+      <div class="toggle-row"><span>Shelf</span><button class="toggle" id="islWidgetShelf" aria-pressed="true"></button></div>
+      <div class="toggle-row"><span>Todos</span><button class="toggle" id="islWidgetTodos" aria-pressed="true"></button></div>
+    </div>
+    <div class="field">
+      <label>Global hotkey</label>
+      <div class="field-row">
+        <input type="text" id="islHotkey" placeholder="Ctrl+Alt+I" spellcheck="false">
+      </div>
+    </div>
+    <div class="field">
+      <label>Appearance</label>
+      <div class="range-label">Opacity — <span id="islOpacityVal">90%</span></div>
+      <input type="range" id="islOpacity" min="40" max="100" step="5">
+      <div class="appearance" id="islPositionChips">
+        <button class="chip" data-position="top-left">Top left</button>
+        <button class="chip" data-position="top-right">Top right</button>
+        <button class="chip" data-position="bottom-left">Bottom left</button>
+        <button class="chip" data-position="bottom-right">Bottom right</button>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="islandCancel">Cancel</button>
+      <button class="btn primary" id="islandSaveLaunch">Save &amp; Launch</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 <script src="app.js"></script>
 </body>

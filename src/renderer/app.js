@@ -16,6 +16,7 @@ const BADGE_LABELS = {
   'needs-config': 'Set Vela URL',
   'error': 'Error',
   'running': 'Running',
+  'installing': 'Installing…',
 };
 
 const SUN = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>';
@@ -66,8 +67,13 @@ function renderCards() {
     el.dataset.id = svc.id;
     el.style.setProperty('--cat', `var(--cat-${svc.category})`);
 
-    const actionLabel = state === 'unavailable' ? 'Locate file…'
-      : state === 'needs-config' ? 'Open Settings' : '';
+    const actions = state === 'unavailable'
+      ? `<div class="card-actions">
+           <button class="card-action primary-action" data-action="install">Install</button>
+           <button class="card-action secondary-action" data-action="locate">Locate file…</button>
+         </div>`
+      : state === 'needs-config'
+        ? `<button class="card-action" data-action="settings">Open Settings</button>` : '';
 
     el.innerHTML = `
       <div class="card-top">
@@ -77,14 +83,17 @@ function renderCards() {
       <h2>${svc.name}</h2>
       <p>${svc.description}</p>
       <div class="card-meta"><span class="card-kind">${svc.kindLabel}</span></div>
-      ${actionLabel ? `<button class="card-action">${actionLabel}</button>` : ''}
+      ${actions}
     `;
 
     el.addEventListener('click', (e) => {
-      if (e.target.classList.contains('card-action')) {
+      const actionBtn = e.target.closest('.card-action');
+      if (actionBtn) {
         e.stopPropagation();
-        if (state === 'needs-config') openSettings();
-        else if (state === 'unavailable') locateFor(svc);
+        const action = actionBtn.dataset.action;
+        if (action === 'settings') openSettings();
+        else if (action === 'locate') locateFor(svc);
+        else if (action === 'install') startInstall(svc);
         return;
       }
       onCardClick(svc);
@@ -116,14 +125,23 @@ function onCardClick(svc) {
       openSettings();
       return;
     case 'unavailable':
-      locateFor(svc);
+      startInstall(svc);
+      return;
+    case 'installing':
       return;
     case 'running':
       toast(`${svc.name} is already running`);
+      if (svc.id === 'velaisland') openIslandSettings(true);
+      else if (GUIDES[svc.id]) openGuide(svc.id);
       return;
     default:
       hideError();
+      if (svc.id === 'velaisland') {
+        openIslandSettings(false);
+        return;
+      }
       window.launcher.openService(svc.id);
+      if (GUIDES[svc.id]) openGuide(svc.id);
   }
 }
 
@@ -141,6 +159,175 @@ async function refresh() {
   applyTheme(cfg.theme || 'system');
   renderCards();
   refreshAuth();
+}
+
+/* ---------- Install flow ---------- */
+let currentInstallSvc = null;
+
+function fmtMB(bytes) {
+  return `${(bytes / 1048576).toFixed(1)} MB`;
+}
+
+function closeInstall() {
+  $('installModal').classList.remove('visible');
+  currentInstallSvc = null;
+}
+
+async function startInstall(svc) {
+  currentInstallSvc = svc;
+  setCardState(svc.id, 'installing');
+  $('installTitle').textContent = `Installing ${svc.name}`;
+  $('installNote').textContent = 'Downloading the installer…';
+  $('installBytes').textContent = '';
+  $('installProgressFill').style.width = '0%';
+  $('installRetry').hidden = true;
+  $('installCancel').textContent = 'Cancel';
+  $('installModal').classList.add('visible');
+
+  const result = await window.launcher.installer.install(svc.id);
+  if (!currentInstallSvc || currentInstallSvc.id !== svc.id) return;
+
+  if (result && result.ok && result.phase === 'done') {
+    closeInstall();
+    await refresh();
+    const after = services.find((s) => s.id === svc.id);
+    if (after && after.state === 'unavailable') {
+      toast(`${svc.name} was installed, but the app wasn't found — use “Locate file…” to point to it.`);
+      return;
+    }
+    toast(`${svc.name} installed`);
+    if (svc.id === 'velazoom') openGuide('velazoom');
+    else if (svc.id === 'velaisland') openIslandSettings(false);
+    return;
+  }
+  if (result && result.phase === 'canceled') {
+    closeInstall();
+    setCardState(svc.id, 'unavailable');
+    return;
+  }
+  $('installNote').textContent = (result && result.error) || 'Installation failed.';
+  $('installRetry').hidden = false;
+  $('installCancel').textContent = 'Close';
+  setCardState(svc.id, 'unavailable');
+}
+
+window.launcher.installer.onProgress((ev) => {
+  if (!currentInstallSvc || ev.id !== currentInstallSvc.id) return;
+  if (ev.phase === 'downloading') {
+    const ratio = ev.total > 0 ? Math.min(1, ev.downloaded / ev.total) : 0;
+    $('installProgressFill').style.width = `${Math.round(ratio * 100)}%`;
+    $('installBytes').textContent = ev.total > 0
+      ? `${fmtMB(ev.downloaded)} of ${fmtMB(ev.total)}`
+      : fmtMB(ev.downloaded);
+    $('installNote').textContent = 'Downloading the installer…';
+  } else if (ev.phase === 'running-installer') {
+    $('installProgressFill').style.width = '100%';
+    $('installBytes').textContent = '';
+    $('installNote').textContent = 'Follow the setup wizard to finish installing, then come back here.';
+  }
+});
+
+/* ---------- Guides (VelaZoom) ---------- */
+let currentGuideId = null;
+const GUIDES = {
+  velazoom: {
+    title: 'How to use VelaZoom',
+    sub: 'Screen zoom & annotation — quick start.',
+    steps: [
+      ['1', 'Zoom in / out — Ctrl + Scroll', 'Move the magnifier over any part of the screen; scroll to change the zoom level.'],
+      ['2', 'Freeze frame — Ctrl + Shift + F', 'Pause the screen so you can zoom and annotate a still image.'],
+      ['3', 'Spotlight — Ctrl + Shift + S', 'Dim everything except a spotlight around the cursor.'],
+      ['4', 'Magnifier — Ctrl + Shift + M', 'Open a docked magnifier pane for precision pointing.'],
+      ['5', 'Annotate & export — Ctrl + Shift + E', 'Draw arrows and boxes on a frozen frame, then copy or save it.'],
+    ],
+  },
+};
+
+function openGuide(id) {
+  const guide = GUIDES[id];
+  if (!guide) return;
+  currentGuideId = id;
+  $('guideTitle').textContent = guide.title;
+  $('guideSub').textContent = guide.sub;
+  $('guideSteps').innerHTML = guide.steps.map(([num, title, sub]) => `
+    <div class="guide-step">
+      <div class="num">${num}</div>
+      <div><div class="step-title">${title}</div><div class="step-sub">${sub}</div></div>
+    </div>
+  `).join('');
+  $('guideModal').classList.add('visible');
+}
+
+function closeGuide() {
+  $('guideModal').classList.remove('visible');
+}
+
+/* ---------- VelaIsland settings ---------- */
+const ISLAND_DEFAULTS = {
+  widgets: { media: true, clock: true, shelf: true, todos: true },
+  hotkey: 'Ctrl+Alt+I',
+  opacity: 90,
+  position: 'top-right',
+};
+
+function islandSettingsFromCfg() {
+  const saved = cfg.velaIslandSettings || {};
+  return {
+    ...ISLAND_DEFAULTS,
+    ...saved,
+    widgets: { ...ISLAND_DEFAULTS.widgets, ...(saved.widgets || {}) },
+  };
+}
+
+function setToggle(id, on) {
+  $(id).setAttribute('aria-pressed', on ? 'true' : 'false');
+}
+
+function toggleOn(id) {
+  return $(id).getAttribute('aria-pressed') === 'true';
+}
+
+function openIslandSettings(running) {
+  const s = islandSettingsFromCfg();
+  setToggle('islWidgetMedia', s.widgets.media);
+  setToggle('islWidgetClock', s.widgets.clock);
+  setToggle('islWidgetShelf', s.widgets.shelf);
+  setToggle('islWidgetTodos', s.widgets.todos);
+  $('islHotkey').value = s.hotkey;
+  $('islOpacity').value = s.opacity;
+  $('islOpacityVal').textContent = `${s.opacity}%`;
+  $('islPositionChips').querySelectorAll('.chip').forEach((c) =>
+    c.classList.toggle('active', c.dataset.position === s.position));
+  $('islandSub').textContent = running
+    ? 'VelaIsland is running — changes apply after it restarts.'
+    : 'Applied each time VelaIsland starts from the Vela launcher.';
+  $('islandModal').classList.add('visible');
+}
+
+function closeIslandSettings() {
+  $('islandModal').classList.remove('visible');
+}
+
+function collectIslandSettings() {
+  const activeChip = $('islPositionChips').querySelector('.chip.active');
+  return {
+    widgets: {
+      media: toggleOn('islWidgetMedia'),
+      clock: toggleOn('islWidgetClock'),
+      shelf: toggleOn('islWidgetShelf'),
+      todos: toggleOn('islWidgetTodos'),
+    },
+    hotkey: $('islHotkey').value.trim() || ISLAND_DEFAULTS.hotkey,
+    opacity: Number($('islOpacity').value) || ISLAND_DEFAULTS.opacity,
+    position: activeChip ? activeChip.dataset.position : ISLAND_DEFAULTS.position,
+  };
+}
+
+async function saveIslandSettingsAndLaunch() {
+  cfg = await window.launcher.saveConfig({ ...cfg, velaIslandSettings: collectIslandSettings() });
+  closeIslandSettings();
+  window.launcher.openService('velaisland');
+  toast('Settings saved — starting VelaIsland');
 }
 
 /* ---------- Account / sign in ---------- */
@@ -296,6 +483,58 @@ $('errorRetry').addEventListener('click', () => {
 });
 $('errorSettings').addEventListener('click', openSettings);
 $('revealConfig').addEventListener('click', () => window.launcher.revealConfig());
+
+$('installRetry').addEventListener('click', () => {
+  if (currentInstallSvc) startInstall(currentInstallSvc);
+});
+$('installCancel').addEventListener('click', () => {
+  if (currentInstallSvc) {
+    window.launcher.installer.cancel(currentInstallSvc.id);
+    setCardState(currentInstallSvc.id, 'unavailable');
+  }
+  closeInstall();
+});
+$('installLocate').addEventListener('click', () => {
+  const svc = currentInstallSvc;
+  if (svc) {
+    window.launcher.installer.cancel(svc.id);
+    setCardState(svc.id, 'unavailable');
+  }
+  closeInstall();
+  if (svc) locateFor(svc);
+});
+$('installModal').addEventListener('click', (e) => {
+  if (e.target === $('installModal')) $('installCancel').click();
+});
+
+$('guideClose').addEventListener('click', closeGuide);
+$('guideLaunch').addEventListener('click', () => {
+  if (currentGuideId) window.launcher.openService(currentGuideId);
+});
+$('guideModal').addEventListener('click', (e) => {
+  if (e.target === $('guideModal')) closeGuide();
+});
+
+$('islandCancel').addEventListener('click', closeIslandSettings);
+$('islandSaveLaunch').addEventListener('click', saveIslandSettingsAndLaunch);
+$('islandModal').addEventListener('click', (e) => {
+  if (e.target === $('islandModal')) {
+    closeIslandSettings();
+    return;
+  }
+  if (e.target.classList.contains('toggle')) {
+    setToggle(e.target.id, !toggleOn(e.target.id));
+    return;
+  }
+  const chip = e.target.closest('#islPositionChips .chip');
+  if (chip) {
+    $('islPositionChips').querySelectorAll('.chip').forEach((c) => c.classList.remove('active'));
+    chip.classList.add('active');
+  }
+});
+$('islOpacity').addEventListener('input', () => {
+  $('islOpacityVal').textContent = `${$('islOpacity').value}%`;
+});
 
 document.querySelectorAll('[data-locate]').forEach((btn) => {
   btn.addEventListener('click', async () => {
