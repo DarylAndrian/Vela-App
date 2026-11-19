@@ -19,9 +19,6 @@ const BADGE_LABELS = {
   'installing': 'Installing…',
 };
 
-const SUN = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>';
-const MOON = '<path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/>';
-
 const $ = (id) => document.getElementById(id);
 const grid = $('cardGrid');
 
@@ -29,6 +26,10 @@ let services = [];
 let cfg = { theme: 'system' };
 let lastFailedId = null;
 let toastTimer = null;
+let destination = 'home';
+let activeViewId = null;
+let mediaActivity = 0;
+let draftTheme = 'system';
 
 function toast(msg) {
   const el = $('toast');
@@ -44,76 +45,112 @@ function applyTheme(choice) {
     ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
     : choice;
   document.documentElement.dataset.theme = resolved;
-  $('themeIcon').innerHTML = resolved === 'light' ? SUN : MOON;
-  document.querySelectorAll('#appearanceChips .chip').forEach((c) =>
-    c.classList.toggle('active', c.dataset.themeChoice === choice));
-  cfg.theme = choice;
-}
-
-async function setTheme(choice) {
-  applyTheme(choice);
-  cfg = await window.launcher.saveConfig({ ...cfg, theme: choice });
-}
-
-/* ---------- Cards ---------- */
-function renderCards() {
-  grid.innerHTML = '';
-  services.forEach((svc) => {
-    const state = svc.state;
-    const el = document.createElement('div');
-    el.className = 'card';
-    el.tabIndex = 0;
-    el.dataset.state = state;
-    el.dataset.id = svc.id;
-    el.style.setProperty('--cat', `var(--cat-${svc.category})`);
-
-    const actions = state === 'unavailable'
-      ? `<div class="card-actions">
-           <button class="card-action primary-action" data-action="install">Install</button>
-           <button class="card-action secondary-action" data-action="locate">Locate file…</button>
-         </div>`
-      : state === 'needs-config'
-        ? `<button class="card-action" data-action="settings">Open Settings</button>` : '';
-
-    el.innerHTML = `
-      <div class="card-top">
-        <div class="card-icon"><svg viewBox="0 0 24 24">${ICONS[svc.icon] || ''}</svg></div>
-        <span class="badge ${state}"><span class="dot"></span>${BADGE_LABELS[state]}</span>
-      </div>
-      <h2>${svc.name}</h2>
-      <p>${svc.description}</p>
-      <div class="card-meta"><span class="card-kind">${svc.kindLabel}</span></div>
-      ${actions}
-    `;
-
-    el.addEventListener('click', (e) => {
-      const actionBtn = e.target.closest('.card-action');
-      if (actionBtn) {
-        e.stopPropagation();
-        const action = actionBtn.dataset.action;
-        if (action === 'settings') openSettings();
-        else if (action === 'locate') locateFor(svc);
-        else if (action === 'install') startInstall(svc);
-        return;
-      }
-      onCardClick(svc);
-    });
-    el.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onCardClick(svc); }
-    });
-    grid.appendChild(el);
+  document.querySelectorAll('#appearanceChips .chip').forEach((chip) => {
+    const selected = chip.dataset.themeChoice === choice;
+    chip.classList.toggle('active', selected);
+    chip.setAttribute('aria-pressed', String(selected));
   });
 }
 
+/* ---------- Destinations and launcher ---------- */
+function icon(name) {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
+}
+
+function renderNav() {
+  const nav = $('toolNav');
+  const focused = document.activeElement?.dataset.destination;
+  nav.replaceChildren(...services.filter((svc) => svc.kind === 'native').map((svc) => {
+    const button = document.createElement('button');
+    button.className = 'nav-item';
+    button.type = 'button';
+    button.dataset.destination = svc.id;
+    const label = svc.id === 'velapt' ? 'Photo to PDF' : svc.name;
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.innerHTML = `${icon(svc.icon)}<span class="rail-label">${label}</span>`;
+    if (svc.id === 'media-converter') {
+      button.insertAdjacentHTML('beforeend', '<span class="nav-activity" hidden aria-hidden="true"></span>');
+    }
+    button.addEventListener('click', () => window.launcher.openService(svc.id));
+    return button;
+  }));
+  selectNav(destination);
+  updateMediaActivity(mediaActivity);
+  if (focused) nav.querySelector(`[data-destination="${focused}"]`)?.focus();
+}
+
+function selectNav(id) {
+  document.querySelectorAll('[data-destination]').forEach((button) => {
+    if (button.dataset.destination === id) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
+  });
+}
+
+function updateMediaActivity(count) {
+  mediaActivity = count;
+  const button = $('toolNav').querySelector('[data-destination="media-converter"]');
+  if (!button) return;
+  const label = count ? `Media Converter · ${count} active ${count === 1 ? 'job' : 'jobs'}` : 'Media Converter';
+  button.title = label;
+  button.setAttribute('aria-label', label);
+  button.querySelector('.nav-activity').hidden = count === 0;
+}
+
+function renderCards() {
+  grid.replaceChildren();
+  for (const [kind, heading] of [['native', 'Built-in tools'], ['external', 'Windows apps']]) {
+    const section = document.createElement('section');
+    section.className = 'launcher-section';
+    section.innerHTML = `<h2>${heading}</h2><div class="launcher-list"></div>`;
+
+    for (const svc of services.filter((item) => item.kind === kind)) {
+      const row = document.createElement('div');
+      row.className = 'launcher-row';
+      row.dataset.id = svc.id;
+      row.dataset.state = svc.state;
+      const showState = kind === 'external' && svc.state !== 'available';
+      row.innerHTML = `
+        <span class="launcher-icon">${icon(svc.icon)}</span>
+        <div class="launcher-description"><h3>${svc.name}</h3><p>${svc.description}</p></div>
+        <span class="badge ${svc.state}" ${showState ? '' : 'hidden'}>${BADGE_LABELS[svc.state] || ''}</span>
+        <div class="launcher-actions"></div>
+      `;
+      renderActions(row, svc);
+      section.querySelector('.launcher-list').appendChild(row);
+    }
+    grid.appendChild(section);
+  }
+}
+
+function renderActions(row, svc) {
+  const actions = row.querySelector('.launcher-actions');
+  const items = svc.state === 'unavailable'
+    ? [['Install', () => startInstall(svc)], ['Locate…', () => locateFor(svc)]]
+    : [[svc.state === 'needs-config' ? 'Settings' : 'Open', () => onCardClick(svc)]];
+  actions.replaceChildren(...items.map(([label, action]) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn';
+    button.textContent = label;
+    button.setAttribute('aria-label', `${label} ${svc.name}`);
+    button.disabled = ['installing', 'coming-soon'].includes(svc.state);
+    button.addEventListener('click', action);
+    return button;
+  }));
+}
+
 function setCardState(id, state) {
-  const svc = services.find((s) => s.id === id);
-  if (svc) svc.state = state;
-  const el = grid.querySelector(`[data-id="${id}"]`);
-  if (!el) return;
-  el.dataset.state = state;
-  const badge = el.querySelector('.badge');
+  const svc = services.find((item) => item.id === id);
+  const row = grid.querySelector(`[data-id="${id}"]`);
+  if (!svc || !row) return;
+  svc.state = state;
+  row.dataset.state = state;
+  const badge = row.querySelector('.badge');
+  badge.hidden = state === 'available';
   badge.className = `badge ${state}`;
-  badge.innerHTML = `<span class="dot"></span>${BADGE_LABELS[state] || state}`;
+  badge.textContent = BADGE_LABELS[state] || state;
+  renderActions(row, svc);
 }
 
 function onCardClick(svc) {
@@ -157,9 +194,53 @@ async function locateFor(svc) {
 async function refresh() {
   [services, cfg] = await Promise.all([window.launcher.listServices(), window.launcher.getConfig()]);
   applyTheme(cfg.theme || 'system');
+  renderNav();
   renderCards();
-  refreshAuth();
+  void refreshAuth();
 }
+
+/* ---------- Companion-app dialogs ---------- */
+const modalTriggers = new Map();
+
+function showModal(id) {
+  const modal = $(id);
+  if (modal.classList.contains('visible')) return;
+  modalTriggers.set(id, document.activeElement);
+  modal.classList.add('visible');
+  document.querySelector('.desktop').inert = true;
+  modal.querySelector('button:not([hidden]):not([disabled])')?.focus();
+}
+
+function dismissModal(id) {
+  const modal = $(id);
+  if (!modal.classList.contains('visible')) return;
+  modal.classList.remove('visible');
+  document.querySelector('.desktop').inert = false;
+  const trigger = modalTriggers.get(id);
+  modalTriggers.delete(id);
+  (trigger?.isConnected && trigger !== document.body ? trigger :
+    document.querySelector('[data-destination][aria-current="page"]'))?.focus();
+}
+
+document.addEventListener('keydown', (event) => {
+  const modal = document.querySelector('.modal-backdrop.visible');
+  if (!modal) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    modal.querySelector('[data-dismiss]')?.click();
+  } else if (event.key === 'Tab') {
+    const controls = [...modal.querySelectorAll('button, input')].filter((el) => !el.hidden && !el.disabled);
+    const first = controls[0];
+    const last = controls.at(-1);
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last?.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first?.focus();
+    }
+  }
+});
 
 /* ---------- Install flow ---------- */
 let currentInstallSvc = null;
@@ -169,7 +250,7 @@ function fmtMB(bytes) {
 }
 
 function closeInstall() {
-  $('installModal').classList.remove('visible');
+  dismissModal('installModal');
   currentInstallSvc = null;
 }
 
@@ -182,7 +263,7 @@ async function startInstall(svc) {
   $('installProgressFill').style.width = '0%';
   $('installRetry').hidden = true;
   $('installCancel').textContent = 'Cancel';
-  $('installModal').classList.add('visible');
+  showModal('installModal');
 
   const result = await window.launcher.installer.install(svc.id);
   if (!currentInstallSvc || currentInstallSvc.id !== svc.id) return;
@@ -255,11 +336,11 @@ function openGuide(id) {
       <div><div class="step-title">${title}</div><div class="step-sub">${sub}</div></div>
     </div>
   `).join('');
-  $('guideModal').classList.add('visible');
+  showModal('guideModal');
 }
 
 function closeGuide() {
-  $('guideModal').classList.remove('visible');
+  dismissModal('guideModal');
 }
 
 /* ---------- VelaIsland settings ---------- */
@@ -301,11 +382,11 @@ function openIslandSettings(running) {
   $('islandSub').textContent = running
     ? 'VelaIsland is running — changes apply after it restarts.'
     : 'Applied each time VelaIsland starts from the Vela launcher.';
-  $('islandModal').classList.add('visible');
+  showModal('islandModal');
 }
 
 function closeIslandSettings() {
-  $('islandModal').classList.remove('visible');
+  dismissModal('islandModal');
 }
 
 function collectIslandSettings() {
@@ -330,83 +411,74 @@ async function saveIslandSettingsAndLaunch() {
   toast('Settings saved — starting VelaIsland');
 }
 
-/* ---------- Account / sign in ---------- */
+/* ---------- Workspace host ---------- */
 async function refreshAuth() {
   try {
-    const st = await window.vela.status();
-    const chip = $('accountChip');
-    const btn = $('signInBtn');
-    if (st.connected && st.identity) {
-      $('accountAvatar').textContent = st.identity.username.slice(0, 1).toUpperCase();
-      $('accountName').textContent = st.identity.username;
-      $('accountState').textContent = st.daysRemaining !== null
-        ? `Connected · ${st.daysRemaining} days left` : 'Connected';
-      chip.classList.add('visible');
-      btn.style.display = 'none';
-    } else {
-      chip.classList.remove('visible');
-      btn.style.display = '';
-    }
+    const status = await window.vela.status();
+    $('accountState').textContent = status.connected && status.identity
+      ? `Signed in as ${status.identity.username}` : 'Signed out';
   } catch {
-    /* keep current state */
+    $('accountState').textContent = 'Connection status unavailable';
   }
 }
 
-/* ---------- Service mode / toolbar ---------- */
-function enterServiceMode(id, url) {
-  const svc = services.find((s) => s.id === id);
-  $('appHeader').classList.add('hidden');
-  $('homeScroll').classList.add('hidden');
-  $('serviceTop').classList.add('visible');
-  $('svcTitle').textContent = svc ? svc.name : '';
-  $('svcUrl').textContent = url === 'native' ? 'Built-in — runs on this PC' : (url || '');
-  setProgress(30, true);
-}
-
-function exitServiceMode() {
-  $('serviceTop').classList.remove('visible');
-  $('appHeader').classList.remove('hidden');
-  $('homeScroll').classList.remove('hidden');
-  setProgress(0, false);
-}
-
-function setProgress(width, visible) {
-  const bar = $('progressBar');
-  bar.style.opacity = visible ? '1' : '0';
-  bar.style.width = `${width}%`;
-}
-
-function showError(message, id) {
-  lastFailedId = id || null;
-  exitServiceMode();
-  $('errorTitle').textContent = "Couldn't reach the service";
-  $('errorMessage').textContent = message || 'Unknown error.';
-  $('errorPanel').classList.add('visible');
-}
-
 function hideError() {
-  $('errorPanel').classList.remove('visible');
+  $('errorPanel').hidden = true;
   lastFailedId = null;
 }
 
-/* ---------- Events from main ---------- */
+function showDestination(id, title) {
+  destination = id;
+  if (id !== 'settings' || activeViewId) applyTheme(cfg.theme || 'system');
+  $('workspaceTitle').textContent = title;
+  $('homeScroll').hidden = id !== 'home';
+  $('settingsPanel').hidden = id !== 'settings' || activeViewId !== null;
+  $('workspaceLoading').hidden = true;
+  $('errorPanel').hidden = true;
+  selectNav(id);
+}
+
+function syncWorkspaceBounds() {
+  const { x, y } = $('workspaceArea').getBoundingClientRect();
+  window.launcher.setWorkspaceBounds({ x: Math.round(x), y: Math.round(y) });
+}
+new ResizeObserver(syncWorkspaceBounds).observe($('workspaceArea'));
+syncWorkspaceBounds();
+
 window.launcher.onEvent((ev) => {
   switch (ev.type) {
-    case 'opened':
-      enterServiceMode(ev.id, ev.url);
+    case 'opened': {
+      activeViewId = ev.id;
+      const svc = services.find((item) => item.id === ev.id);
+      showDestination(ev.id === 'connect' ? 'settings' : ev.id, ev.id === 'connect' ? 'Vela account' :
+        svc?.id === 'velapt' ? 'Photo to PDF' : svc?.name || 'Workspace');
+      $('workspaceLoading').hidden = !ev.loading;
       break;
-    case 'loading':
-      setProgress(65, true);
-      break;
+    }
     case 'loaded':
-      setProgress(100, true);
-      setTimeout(() => setProgress(0, false), 400);
+      if (ev.id === activeViewId) $('workspaceLoading').hidden = true;
       break;
-    case 'home':
-      exitServiceMode();
+    case 'shell':
+      activeViewId = null;
+      showDestination(ev.destination, ev.destination === 'settings' ? 'Settings' : 'Home');
+      if (ev.destination === 'settings') populateSettings();
       break;
     case 'failed':
-      showError(ev.message, ev.id);
+      if (ev.id !== activeViewId) break;
+      activeViewId = null;
+      lastFailedId = ev.id;
+      $('workspaceLoading').hidden = true;
+      $('errorMessage').textContent = ev.message;
+      $('errorPanel').hidden = false;
+      break;
+    case 'focus-navigation':
+      document.querySelector('[data-destination][aria-current="page"]')?.focus();
+      break;
+    case 'account-changed':
+      void refreshAuth();
+      break;
+    case 'media-activity':
+      updateMediaActivity(ev.count);
       break;
     case 'needs-config':
       openSettings();
@@ -433,20 +505,19 @@ window.launcher.onEvent((ev) => {
       break;
   }
 });
-window.vela.onAuthExpired(() => refreshAuth());
 
 /* ---------- Settings ---------- */
 function openSettings() {
+  void window.launcher.showWorkspace('settings');
+}
+
+function populateSettings() {
   $('cfgVelaBaseUrl').value = cfg.velaBaseUrl || '';
   $('cfgVelaIslandPath').value = cfg.velaIslandPath || '';
   $('cfgVelaZoomPath').value = cfg.velaZoomPath || '';
-  $('configPathText').textContent = `Config: ${cfg.configPath || ''}`;
-  applyTheme(cfg.theme || 'system');
-  $('settingsModal').classList.add('visible');
-}
-
-function closeSettings() {
-  $('settingsModal').classList.remove('visible');
+  $('configPathText').textContent = cfg.configPath || '';
+  draftTheme = cfg.theme || 'system';
+  applyTheme(draftTheme);
 }
 
 async function saveSettings() {
@@ -455,33 +526,25 @@ async function saveSettings() {
     velaBaseUrl: $('cfgVelaBaseUrl').value.trim(),
     velaIslandPath: $('cfgVelaIslandPath').value.trim(),
     velaZoomPath: $('cfgVelaZoomPath').value.trim(),
-    theme: cfg.theme,
+    theme: draftTheme,
   });
-  closeSettings();
   await refresh();
+  populateSettings();
   toast('Settings saved');
 }
 
 /* ---------- Wire up ---------- */
-$('themeBtn').addEventListener('click', () => {
-  const isDark = document.documentElement.dataset.theme === 'dark';
-  setTheme(isDark ? 'light' : 'dark');
-});
 $('settingsBtn').addEventListener('click', openSettings);
-$('settingsCancel').addEventListener('click', closeSettings);
+$('settingsCancel').addEventListener('click', populateSettings);
 $('settingsSave').addEventListener('click', saveSettings);
-$('settingsModal').addEventListener('click', (e) => {
-  if (e.target === $('settingsModal')) closeSettings();
-});
-$('backBtn').addEventListener('click', () => window.launcher.navBack());
-$('homeBtn').addEventListener('click', () => window.launcher.navHome());
-$('signInBtn').addEventListener('click', () => window.launcher.openNative('connect.html'));
-$('accountChip').addEventListener('click', () => window.launcher.openNative('connect.html'));
+$('homeBtn').addEventListener('click', () => window.launcher.showWorkspace('home'));
+$('accountBtn').addEventListener('click', () => window.launcher.showWorkspace('account'));
 $('errorRetry').addEventListener('click', () => {
+  const failed = lastFailedId;
   hideError();
-  if (lastFailedId) window.launcher.openService(lastFailedId);
+  if (failed === 'connect') void window.launcher.showWorkspace('account');
+  else if (failed) void window.launcher.openService(failed);
 });
-$('errorSettings').addEventListener('click', openSettings);
 $('revealConfig').addEventListener('click', () => window.launcher.revealConfig());
 
 $('installRetry').addEventListener('click', () => {
@@ -546,11 +609,14 @@ document.querySelectorAll('[data-locate]').forEach((btn) => {
 
 $('appearanceChips').addEventListener('click', (e) => {
   const chip = e.target.closest('.chip');
-  if (chip) applyTheme(chip.dataset.themeChoice);
+  if (!chip) return;
+  draftTheme = chip.dataset.themeChoice;
+  applyTheme(draftTheme);
 });
 
 window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
-  if (cfg.theme === 'system') applyTheme('system');
+  const choice = destination === 'settings' && activeViewId === null ? draftTheme : cfg.theme;
+  if (choice === 'system') applyTheme('system');
 });
 
 refresh();

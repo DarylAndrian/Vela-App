@@ -29,10 +29,9 @@ export function StageUpload({ step, onBrowse }: { step: number; onBrowse: () => 
           if (e.dataTransfer.files.length) importFiles(e.dataTransfer.files);
         }}
       >
-        <div className="dz-icon"><Icon name="image" /></div>
-        <h3>Drop your photos here</h3>
-        <p>Drag one or more images, paste from the clipboard, or browse. You'll frame each one with corner nodes in the next step.</p>
-        <span className="fmt">JPG · PNG · WEBP · up to 30 photos</span>
+        <button className="vp-btn btn-primary" type="button">Add photos</button>
+        <p>Drop images here or paste with Ctrl+V.</p>
+        <span className="fmt">Up to 30 photos</span>
       </div>
     </div>
   );

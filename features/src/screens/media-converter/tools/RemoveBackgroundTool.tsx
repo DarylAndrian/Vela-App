@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from '../components/Alert';
 import { Button } from '../components/Button';
 import { DropZone } from '../components/DropZone';
 import { ProgressBar } from '../components/ProgressBar';
 import { ToolShell } from '../components/ToolShell';
-import { downloadBlob } from '../lib/download';
+import { saveOutput, outputName } from '../lib/save-output';
+import { RevealOutput } from '../../../components/RevealOutput';
 import { getMedia, hasMedia, type ModelsStatus } from '../lib/media-bridge';
 import { removeBackgroundClient, type QualityMode } from '../lib/remove-background-client';
+import { useMediaActivity } from '../lib/use-media-activity';
 
 const PHOTO_ACCEPT = {
   'image/jpeg': ['.jpg', '.jpeg'],
@@ -23,6 +25,7 @@ function formatMb(bytes: number): string {
 
 export function RemoveBackgroundTool() {
   const [file, setFile] = useState<File | null>(null);
+  const files = useMemo(() => file ? [file] : [], [file]);
   const [originalUrl, setOriginalUrl] = useState<string | null>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [resultFilename, setResultFilename] = useState<string | null>(null);
@@ -31,7 +34,9 @@ export function RemoveBackgroundTool() {
   const [quality, setQuality] = useState<QualityMode>('high');
   const [error, setError] = useState<string | null>(null);
   const [models, setModels] = useState<ModelsStatus | null>(null);
-  const [downloadNote, setDownloadNote] = useState<string | null>(null);
+  const [savedPath, setSavedPath] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  useMediaActivity('background', isProcessing);
   const resultBlobRef = useRef<Blob | null>(null);
   const originalUrlRef = useRef<string | null>(null);
   const resultUrlRef = useRef<string | null>(null);
@@ -63,7 +68,7 @@ export function RemoveBackgroundTool() {
     }
     const media = getMedia();
     const unsub = media.onModelsProgress(setModels);
-    media.ensureModels('base').then(setModels).catch(() => {});
+    void media.modelsStatus().then(setModels).catch(() => {});
     return () => {
       unsub();
       if (originalUrlRef.current) URL.revokeObjectURL(originalUrlRef.current);
@@ -85,25 +90,20 @@ export function RemoveBackgroundTool() {
       setResultFilename(null);
       setProgress('');
       setError(null);
-      setDownloadNote(null);
+      setSavedPath(null);
     },
     [setOriginal, setResult],
   );
 
-  const retryModels = async () => {
-    if (!hasMedia()) return;
-    setModels((prev) => (prev ? { ...prev, downloading: true, error: null } : prev));
-    const status = await getMedia().ensureModels('base');
-    setModels(status);
-  };
-
   const processImage = async () => {
     if (!file || !hasMedia()) return;
 
+    setResult(null);
+    resultBlobRef.current = null;
     setIsProcessing(true);
     setProgress('');
     setError(null);
-    setDownloadNote(null);
+    setSavedPath(null);
 
     try {
       const media = getMedia();
@@ -140,244 +140,81 @@ export function RemoveBackgroundTool() {
     }
   };
 
-  const handleDownload = () => {
-    if (!resultBlobRef.current) return;
-    downloadBlob(resultBlobRef.current, resultFilename ?? 'image-nobg.png');
-    setDownloadNote('Saved to your Downloads folder.');
-  };
+  async function saveResult() {
+    if (!resultBlobRef.current || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const path = await saveOutput(resultBlobRef.current, resultFilename ?? 'image-nobg.png');
+      if (path) setSavedPath(path);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save the image.');
+    } finally {
+      setSaving(false);
+    }
+  }
 
-  const modelsReady = Boolean(models?.baseReady);
-  const downloadPct =
-    models && models.total > 0 ? (models.downloaded / models.total) * 100 : null;
+  const downloadPct = models && models.total > 0 ? (models.downloaded / models.total) * 100 : null;
+  const busy = isProcessing || saving;
+  const modelReady = quality === 'high' ? models?.highReady : models?.baseReady;
 
   return (
     <ToolShell
-      eyebrow="Background Remover"
-      title="Remove backgrounds*in seconds*"
-      description="Cut the subject out of any photo with AI segmentation and edge refinement — right on this computer. Choose between fast processing or high-quality mode with stronger smoothing."
-      features={[
-        {
-          title: 'Two quality modes',
-          body: 'Fast uses a quantized model with basic smoothing; High uses full precision with stronger edge refinement.',
-        },
-        {
-          title: 'Transparent PNG output',
-          body: 'Download the result as a PNG with a clean alpha channel, ready for compositing.',
-        },
-        {
-          title: 'Stays on this device',
-          body: 'Your images never leave this computer. The AI model downloads once, then runs locally from cache.',
-        },
-      ]}
-    >
-      <section className="mc-bento p-5 sm:p-6">
-        <div className="space-y-6">
-          <div
-            className="rounded-xl border border-line bg-base px-4 py-3"
-            data-testid="models-status"
-          >
-            {!models && <p className="text-sm text-mut">Checking AI models...</p>}
-
-            {models?.downloading && (
-              <ProgressBar
-                value={downloadPct}
-                label={`Downloading AI models... ${formatMb(models.downloaded)} of ${formatMb(models.total)}`}
-              />
-            )}
-
-            {models && !models.downloading && models.error && !models.baseReady && (
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm text-mut">
-                  Couldn&apos;t download the AI models. Check your connection and try
-                  again — every other tool still works offline.
-                </p>
-                <Button variant="secondary" size="sm" onClick={retryModels}>
-                  Retry download
-                </Button>
-              </div>
-            )}
-
-            {models && !models.downloading && !models.error && models.baseReady && (
-              <p className="text-sm text-mut">
-                Models ready — processing stays on this device.
-              </p>
-            )}
-          </div>
-
-          <div>
-            <p id="bg-quality-label" className="mc-label">
-              Quality mode
-            </p>
-            <div role="group" aria-labelledby="bg-quality-label" className="inline-flex gap-1 rounded-xl border border-line bg-base p-1">
-              <button
-                type="button"
-                onClick={() => setQuality('fast')}
-                aria-pressed={quality === 'fast'}
-                disabled={isProcessing}
-                className={`min-h-8 rounded-lg px-4 text-sm font-medium transition-colors duration-[120ms] disabled:cursor-not-allowed ${
-                  quality === 'fast'
-                    ? 'bg-accent-soft text-accent-text'
-                    : 'text-mut hover:bg-hover hover:text-ink'
-                }`}
-              >
-                Fast
-              </button>
-              <button
-                type="button"
-                onClick={() => setQuality('high')}
-                aria-pressed={quality === 'high'}
-                disabled={isProcessing}
-                className={`min-h-8 rounded-lg px-4 text-sm font-medium transition-colors duration-[120ms] disabled:cursor-not-allowed ${
-                  quality === 'high'
-                    ? 'bg-accent-soft text-accent-text'
-                    : 'text-mut hover:bg-hover hover:text-ink'
-                }`}
-              >
-                High quality
-              </button>
-            </div>
-            <p className="mt-2 text-xs text-mut">
-              {quality === 'fast'
-                ? 'Quantized model for faster processing with basic edge smoothing.'
-                : models?.highReady
-                  ? 'Full-precision model with stronger edge smoothing for cleaner results.'
-                  : 'Full-precision model with stronger edge smoothing. High quality downloads an additional 176 MB model on first use.'}
-            </p>
-          </div>
-
-          {!file && (
-            <DropZone
-              files={[]}
-              onFilesChange={handleFilesChange}
-              accept={PHOTO_ACCEPT}
-              dropLabel="Drag and drop an image here"
-              activeDropLabel="Drop to start"
-              hintLabel="Click to browse — JPG, PNG, WebP."
-            />
+      settings={
+        <>
+          <label htmlFor="bg-quality" className="mc-label">Quality</label>
+          <select id="bg-quality" className="mc-input" value={quality} disabled={busy}
+            onChange={(event) => setQuality(event.target.value as QualityMode)}>
+            <option value="fast">Fast</option>
+            <option value="high">High quality</option>
+          </select>
+          {!modelReady && (
+            <p className="mt-3 text-xs text-mut">First use requires a one-time model download.</p>
           )}
-
-          {file && originalUrl && (
-            <div>
-              <div className="mb-5 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <h3 className="truncate text-lg leading-6 font-semibold text-ink">
-                    {file.name}
-                  </h3>
-                  <p className="text-xs font-medium tabular-nums text-mut">
-                    {(file.size / (1024 * 1024)).toFixed(2)} MB
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleFilesChange([])}
-                  disabled={isProcessing}
-                >
-                  Clear
-                </Button>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-ink">Original</p>
-                  <div className="relative aspect-video overflow-hidden rounded-xl border border-line bg-base">
-                    <img
-                      src={originalUrl}
-                      alt="Original"
-                      className="h-full w-full object-contain"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-ink">Result</p>
-                  <div
-                    className={`relative aspect-video overflow-hidden rounded-xl border border-line ${resultUrl ? '' : 'bg-base'}`}
-                    style={
-                      resultUrl
-                        ? { backgroundImage: `url(${CHECKERBOARD})` }
-                        : undefined
-                    }
-                  >
-                    {resultUrl ? (
-                      <img
-                        src={resultUrl}
-                        alt="Result"
-                        className="h-full w-full object-contain"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center">
-                        <span className="text-sm text-mut">
-                          {isProcessing ? progress || 'Processing...' : 'Not processed yet'}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-                {!resultUrl ? (
-                  <Button
-                    onClick={processImage}
-                    disabled={isProcessing || !modelsReady}
-                    loading={isProcessing}
-                  >
-                    {isProcessing ? 'Processing...' : 'Remove background'}
-                  </Button>
-                ) : (
-                  <>
-                    <Button onClick={handleDownload}>
-                      Download transparent PNG
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      onClick={() => {
-                        setResult(null);
-                        resultBlobRef.current = null;
-                        setResultFilename(null);
-                        setProgress('');
-                        setError(null);
-                        setDownloadNote(null);
-                      }}
-                    >
-                      Re-process
-                    </Button>
-                  </>
-                )}
-              </div>
-
-              {isProcessing && (
-                <div className="mt-5">
-                  <ProgressBar label={progress || 'Processing...'} />
-                </div>
-              )}
-
-              {error && (
-                <div className="mt-4">
-                  <Alert tone="error">{error}</Alert>
-                </div>
-              )}
-
-              {downloadNote && (
-                <div className="mt-4">
-                  <Alert tone="success">{downloadNote}</Alert>
-                </div>
-              )}
-
-              {resultUrl && !isProcessing && (
-                <p className="mt-4 text-center text-xs font-medium text-mut">
-                  Processed locally with
-                  {quality === 'fast'
-                    ? ' basic edge smoothing'
-                    : ' AI-powered edge refinement'}
-                  .
-                </p>
-              )}
-            </div>
-          )}
+        </>
+      }
+      status={
+        <div data-testid="models-status">
+          {models?.downloading ? (
+            <ProgressBar value={downloadPct} label={`Downloading model · ${formatMb(models.downloaded)} of ${formatMb(models.total)}`} />
+          ) : isProcessing ? (
+            <ProgressBar label={progress || 'Removing background…'} />
+          ) : models?.baseReady ? 'Models ready' : null}
         </div>
-      </section>
+      }
+      actions={
+        <>
+          <Button variant={resultUrl ? 'secondary' : 'primary'} onClick={processImage}
+            disabled={!file || busy || !hasMedia()} loading={isProcessing}>
+            {resultUrl ? 'Reprocess' : 'Remove background'}
+          </Button>
+          {resultUrl && <Button onClick={saveResult} disabled={busy} loading={saving}>Save PNG…</Button>}
+        </>
+      }
+    >
+      <DropZone files={files} onFilesChange={handleFilesChange} accept={PHOTO_ACCEPT}
+        multiple={false} disabled={busy} dropLabel="Drag and drop an image here"
+        activeDropLabel="Drop your image here" hintLabel="JPG, PNG, WebP" />
+      {originalUrl && (
+        <div className="grid grid-cols-2 gap-3">
+          <figure>
+            <figcaption className="mb-1 text-sm text-mut">Original</figcaption>
+            <div className="aspect-square overflow-hidden rounded-lg border border-line bg-base">
+              <img src={originalUrl} alt="Original" className="h-full w-full object-contain" />
+            </div>
+          </figure>
+          <figure>
+            <figcaption className="mb-1 text-sm text-mut">Result</figcaption>
+            <div className="grid aspect-square place-items-center overflow-hidden rounded-lg border border-line bg-base"
+              style={resultUrl ? { backgroundImage: `url(${CHECKERBOARD})` } : undefined}>
+              {resultUrl ? <img src={resultUrl} alt="Background removed" className="h-full w-full object-contain" /> :
+                <span className="px-2 text-center text-xs text-mut">{isProcessing ? 'Processing…' : 'Preview appears here'}</span>}
+            </div>
+          </figure>
+        </div>
+      )}
+      {error && <Alert tone="error">{error}</Alert>}
+      {savedPath && <Alert tone="success">Saved {outputName(savedPath)}. <RevealOutput path={savedPath} /></Alert>}
     </ToolShell>
   );
 }

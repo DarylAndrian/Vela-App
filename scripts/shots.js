@@ -37,12 +37,14 @@ async function run(win) {
   await sleep(400);
   await capture('02-settings-dark.png');
 
-  await js(`document.getElementById('settingsCancel').click();
-            document.getElementById('themeBtn').click()`);
-  await sleep(400);
-  await capture('03-home-light.png');
+  await js(`document.querySelector('[data-theme-choice="light"]').click();`);
+  await capture('03-settings-light-preview.png');
 
-  await js(`document.querySelector('[data-id="velapt"]').click()`);
+  await js(`document.querySelector('#toolNav [data-destination="media-converter"]').click()`);
+  await sleep(1200);
+  await capture('04-media-converter.png');
+
+  await js(`document.querySelector('#toolNav [data-destination="velapt"]').click()`);
   await sleep(1500);
   await capture('04-service-velapt.png');
 
@@ -65,7 +67,7 @@ async function run(win) {
   await js(`document.getElementById('homeBtn').click()`);
   await sleep(300);
 
-  await js(`document.querySelector('[data-id="picture-connector"]').click()`);
+  await js(`document.querySelector('#toolNav [data-destination="picture-connector"]').click()`);
   await sleep(3000);
   await capture('05-native-picture-connector.png');
   const pcView = viewManager.getView();
@@ -81,7 +83,7 @@ async function run(win) {
 
   await js(`document.getElementById('homeBtn').click()`);
   await sleep(300);
-  await js(`document.querySelector('[data-id="chart-code"]').click()`);
+  await js(`document.querySelector('#toolNav [data-destination="chart-code"]').click()`);
   await sleep(3000);
   await capture('06-native-connect.png');
   const ccView = viewManager.getView();

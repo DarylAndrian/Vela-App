@@ -2,13 +2,16 @@
 import { state, emit } from '../state';
 import { getPreview } from '../lib/imaging';
 import { Icon } from './icons';
+import type { Page } from '../types';
 
-export function thumbImg(page) {
+export function thumbImg(page: Page) {
   const pv = getPreview(page);
   const c = document.createElement('canvas');
   const long = Math.max(pv.width, pv.height), s = 200 / long;
   c.width = Math.max(1, Math.round(pv.width * s)); c.height = Math.max(1, Math.round(pv.height * s));
-  c.getContext('2d').drawImage(pv, 0, 0, c.width, c.height);
+  const context = c.getContext('2d');
+  if (!context) return page.thumb;
+  context.drawImage(pv, 0, 0, c.width, c.height);
   page.thumb = c.toDataURL('image/jpeg', 0.72);
   return page.thumb;
 }
@@ -83,7 +86,7 @@ export function PhotoRail({ onAdd, onSelect, onRemove }: {
             <button className="del" title="Remove"><Icon name="trash" /></button>
           </div>
           <div className="thumb-media">
-            <img alt={page.name} src={page.thumb || thumbImg(page)} />
+            <img alt={page.name} src={page.thumb || thumbImg(page) || undefined} />
             <span className={'status' + (page.confirmed ? ' show' : '')}><Icon name="check" /></span>
           </div>
           <div className="tname">{page.name}</div>

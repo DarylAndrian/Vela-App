@@ -5,9 +5,8 @@ contextBridge.exposeInMainWorld('launcher', {
   getConfig: () => ipcRenderer.invoke('config:get'),
   saveConfig: (cfg) => ipcRenderer.invoke('config:save', cfg),
   openService: (id) => ipcRenderer.invoke('service:open', id),
-  openNative: (page) => ipcRenderer.invoke('native:open', page),
-  navBack: () => ipcRenderer.invoke('nav:back'),
-  navHome: () => ipcRenderer.invoke('nav:home'),
+  showWorkspace: (destination) => ipcRenderer.invoke('workspace:show', destination),
+  setWorkspaceBounds: (bounds) => ipcRenderer.send('workspace:bounds', bounds),
   locate: (kind) => ipcRenderer.invoke('dialog:locate', kind),
   revealConfig: () => ipcRenderer.invoke('config:reveal'),
   onEvent: (cb) => ipcRenderer.on('service:state', (_e, payload) => cb(payload)),
@@ -27,9 +26,9 @@ contextBridge.exposeInMainWorld('launcher', {
     ffmpegProbe: () => ipcRenderer.invoke('media:ffmpeg-probe'),
     convert: (req) => ipcRenderer.invoke('media:convert', req),
     cancelJob: (jobId) => ipcRenderer.invoke('media:cancel-job', jobId),
+    reportActivity: (mode, busy) => ipcRenderer.send('media:activity', mode, busy),
     pickSave: (opts) => ipcRenderer.invoke('media:pick-save', opts),
     pickFolder: () => ipcRenderer.invoke('media:pick-folder'),
-    reveal: (target) => ipcRenderer.invoke('media:reveal', target),
     ensureModels: (tier) => ipcRenderer.invoke('media:ensure-models', tier),
     modelsStatus: () => ipcRenderer.invoke('media:models-status'),
     onModelsProgress: (cb) => {
@@ -64,6 +63,7 @@ contextBridge.exposeInMainWorld('vela', {
   },
   files: {
     save: (defaultName, filters, dataBase64) => ipcRenderer.invoke('files:save', { defaultName, filters, dataBase64 }),
+    reveal: (target) => ipcRenderer.invoke('files:reveal', target),
     openImages: () => ipcRenderer.invoke('files:open-images'),
   },
   clipboard: {

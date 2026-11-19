@@ -5,12 +5,17 @@ import { state, subscribeToasts, type ToastItem } from '../state';
 import { Icon } from './icons';
 
 const STEP_META: Record<number, { kicker: string; title: string; primary: string }> = {
-  1: { kicker: 'Step 1 of 3', title: 'Upload your photos', primary: 'Continue' },
+  1: { kicker: 'Step 1 of 3', title: 'Add photos', primary: 'Continue' },
   2: { kicker: 'Step 2 of 3', title: 'Frame & flatten each page', primary: 'Confirm & next' },
   3: { kicker: 'Step 3 of 3', title: 'Enhance, lay out & export', primary: 'Export PDF' },
 };
 
-export function Stepper({ step, onStep }: { step: number; onStep: (n: number) => void }) {
+export function Stepper({ step, onStep, inspectorOpen, onInspect }: {
+  step: number;
+  onStep: (n: number) => void;
+  inspectorOpen: boolean;
+  onInspect: () => void;
+}) {
   const total = state.pages.length;
   return (
     <nav className="stepbar" aria-label="Progress">
@@ -20,15 +25,20 @@ export function Stepper({ step, onStep }: { step: number; onStep: (n: number) =>
             key={s}
             className={'step' + (s === step ? ' current' : s < step ? ' done' : '') + (s > step && total === 0 ? ' disabled' : '')}
             data-step={s}
-            tabIndex={0}
-            onClick={() => onStep(s)}
           >
-            <span className="dot">{s < step ? <Icon name="check" /> : String(s)}</span>
-            <span className="lbl">{s === 1 ? 'Upload' : s === 2 ? 'Crop' : 'Enhance & Export'}</span>
-            {s < 3 && <span className={'link' + (s < step ? ' done' : '')} />}
+            <button type="button" disabled={s > 1 && total === 0}
+              aria-current={s === step ? 'step' : undefined} onClick={() => onStep(s)}>
+              <span className="dot" aria-hidden="true">{s < step ? <Icon name="check" /> : String(s)}</span>
+              <span className="lbl">{s === 1 ? 'Import' : s === 2 ? 'Crop' : 'Enhance & export'}</span>
+            </button>
+            {s < 3 && <span className={'link' + (s < step ? ' done' : '')} aria-hidden="true" />}
           </li>
         ))}
       </ol>
+      <button className="vp-btn btn-ghost vp-inspector-toggle" type="button"
+        aria-controls="inspector" aria-expanded={inspectorOpen} onClick={onInspect}>
+        Inspector
+      </button>
     </nav>
   );
 }

@@ -9,6 +9,8 @@ interface DropZoneProps {
   dropLabel?: string;
   activeDropLabel?: string;
   hintLabel?: string;
+  multiple?: boolean;
+  disabled?: boolean;
 }
 
 export function formatFileSize(bytes: number): string {
@@ -48,57 +50,20 @@ export function DropZone({
   accept,
   dropLabel = 'Drag and drop files here',
   activeDropLabel = 'Drop your files here',
-  hintLabel = 'or click to browse.',
+  hintLabel,
+  multiple = true,
+  disabled = false,
 }: DropZoneProps) {
   const [previewUrls, setPreviewUrls] = useState<(string | null)[]>([]);
+  const zoneRef = useRef<HTMLDivElement>(null);
   const nativeDropFiles = useRef<File[]>([]);
 
   useEffect(() => {
-    let cancelled = false;
-    const readers: FileReader[] = [];
-    const objectUrls: string[] = [];
-
-    setPreviewUrls(files.map(() => null));
-
-    files.forEach((file, index) => {
-      if (!isPreviewable(file)) {
-        return;
-      }
-
-      // Videos can be hundreds of MB — stream the preview from an object URL
-      // instead of reading the whole file into a base64 data URL.
-      if (file.type.startsWith('video/')) {
-        const url = URL.createObjectURL(file);
-        objectUrls.push(url);
-        setPreviewUrls((prev) => {
-          const next = [...prev];
-          next[index] = url;
-          return next;
-        });
-        return;
-      }
-
-      const reader = new FileReader();
-      readers.push(reader);
-      reader.onload = () => {
-        if (cancelled) {
-          return;
-        }
-        const result = typeof reader.result === 'string' ? reader.result : null;
-        setPreviewUrls((prev) => {
-          const next = [...prev];
-          next[index] = result;
-          return next;
-        });
-      };
-      reader.readAsDataURL(file);
+    const urls = files.map((file) => isPreviewable(file) ? URL.createObjectURL(file) : null);
+    setPreviewUrls(urls);
+    return () => urls.forEach((url) => {
+      if (url) URL.revokeObjectURL(url);
     });
-
-    return () => {
-      cancelled = true;
-      readers.forEach((reader) => reader.abort());
-      objectUrls.forEach((url) => URL.revokeObjectURL(url));
-    };
   }, [files]);
 
   const onDrop = useCallback(
@@ -108,23 +73,26 @@ export function DropZone({
       const originals = nativeDropFiles.current;
       nativeDropFiles.current = [];
       const resolved = acceptedFiles.map((file) => {
-        const match = originals.find(
+        const index = originals.findIndex(
           (original) =>
             original.name === file.name &&
             original.size === file.size &&
             original.lastModified === file.lastModified,
         );
-        return match ?? file;
+        return index < 0 ? file : originals.splice(index, 1)[0];
       });
-      onFilesChange([...files, ...resolved]);
+      if (resolved.length) onFilesChange(multiple ? [...files, ...resolved] : resolved);
     },
-    [files, onFilesChange],
+    [files, multiple, onFilesChange],
   );
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+  const { getRootProps, getInputProps, isDragActive, open, fileRejections } = useDropzone({
     onDrop,
     accept,
-    multiple: true,
+    multiple,
+    disabled,
+    noClick: true,
+    noKeyboard: true,
   });
 
   const removeFile = (index: number) => {
@@ -140,32 +108,40 @@ export function DropZone({
     [files],
   );
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.ctrlKey || event.key.toLowerCase() !== 'o' || disabled ||
+          !zoneRef.current || zoneRef.current.closest('[hidden]')) return;
+      event.preventDefault();
+      open();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [disabled, open]);
+
   return (
-    <div className="space-y-4">
-      <div
-        {...getRootProps()}
+    <div ref={zoneRef} className="space-y-3">
+      <div {...getRootProps()}
         onDropCapture={(event) => {
           nativeDropFiles.current = Array.from(event.dataTransfer?.files ?? []);
         }}
-        className={`cursor-pointer rounded-2xl border-2 border-dashed px-6 py-10 text-center transition-colors duration-[180ms] ${
-          isDragActive
-            ? 'border-accent bg-accent-soft'
-            : 'border-line-strong bg-surface hover:border-accent hover:bg-hover'
-        }`}
-      >
+        className={`mc-file-intake ${isDragActive ? 'mc-file-intake-active' : ''}`}>
         <input {...getInputProps()} />
-        <div className="mx-auto flex max-w-md flex-col items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent-soft text-accent-text">
-            <UploadIcon aria-hidden className="h-6 w-6" />
-          </div>
-          <div>
-            <p className="text-base font-semibold text-ink">
-              {isDragActive ? activeDropLabel : dropLabel}
-            </p>
-            <p className="mt-1 text-sm text-mut">{hintLabel}</p>
-          </div>
+        <button className="mc-add-files" type="button" disabled={disabled} onClick={open}>
+          <UploadIcon aria-hidden className="h-4 w-4" />
+          {multiple ? 'Add files' : 'Add image'}
+        </button>
+        <div>
+          <p className="text-sm text-ink">{isDragActive ? activeDropLabel : dropLabel}</p>
+          {hintLabel && <p className="mt-0.5 text-xs text-mut">{hintLabel}</p>}
         </div>
       </div>
+      {fileRejections.length > 0 && (
+        <p className="text-sm text-danger-fg" role="alert">
+          {fileRejections[0].file.name}: {fileRejections[0].errors.some((error) => error.code === 'too-many-files')
+            ? 'Add one image at a time.' : 'This file type is not supported.'}
+        </p>
+      )}
 
       {files.length > 0 && (
         <div className="mc-panel p-4">
@@ -179,13 +155,14 @@ export function DropZone({
             <button
               type="button"
               onClick={clearFiles}
+              disabled={disabled}
               className="min-h-8 rounded-lg px-3 text-sm font-medium text-mut transition-colors duration-[120ms] hover:bg-hover hover:text-ink"
             >
               Clear all
             </button>
           </div>
 
-          <ul aria-label="Selected files" className="grid max-h-72 gap-2 overflow-y-auto sm:grid-cols-2">
+          <ul aria-label="Selected files" className="grid gap-1.5">
             {files.map((file, index) => {
               const url = previewUrls[index] ?? null;
               const previewable = url !== null;
@@ -228,6 +205,7 @@ export function DropZone({
                   <button
                     type="button"
                     onClick={() => removeFile(index)}
+                    disabled={disabled}
                     aria-label={`Remove ${file.name}`}
                     className="min-h-8 shrink-0 rounded-lg px-3 text-xs font-medium text-mut transition-colors duration-[120ms] hover:bg-hover hover:text-ink"
                   >

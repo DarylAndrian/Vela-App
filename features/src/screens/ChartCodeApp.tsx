@@ -1,7 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { vela, type ChartChanges, type ChartCode, type Product } from '../lib/ipc';
 import { ChartCodeList } from './chart/ChartCodeList';
 import { ChartCodeEditor } from './chart/ChartCodeEditor';
+
+function subscribeToTheme(onChange: () => void) {
+  window.addEventListener('vela-theme', onChange);
+  return () => window.removeEventListener('vela-theme', onChange);
+}
 
 export function ChartCodeApp() {
   const [charts, setCharts] = useState<ChartCode[]>([]);
@@ -13,7 +18,7 @@ export function ChartCodeApp() {
   const [openChart, setOpenChart] = useState<ChartCode | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const isDark = document.documentElement.dataset.theme !== 'light';
+  const isDark = useSyncExternalStore(subscribeToTheme, () => document.documentElement.dataset.theme !== 'light');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -36,25 +41,10 @@ export function ChartCodeApp() {
     void load();
     // Products are optional: without them the picker just offers "No product".
     vela().products.list().then((res) => { if (res.ok) setProducts(res.data); }).catch(() => {});
-    vela().onAuthExpired(() => {
-      // Session lost — send the user back to the connect screen.
-      (window as any).launcher.openNative('connect.html');
-    });
   }, [load]);
 
-  // Editor navigation uses history so the toolbar Back button works.
-  useEffect(() => {
-    const onPop = () => setOpenChart(null);
-    window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
-  }, []);
-
-  const open = (chart: ChartCode) => {
-    history.pushState({ chartId: chart.id }, '');
-    setOpenChart(chart);
-  };
-
-  const back = () => history.back();
+  const open = (chart: ChartCode) => setOpenChart(chart);
+  const back = () => setOpenChart(null);
 
   const create = async (title: string) => {
     if (creating) return;
@@ -111,13 +101,7 @@ export function ChartCodeApp() {
   };
 
   return (
-    <div className="page">
-      {!openChart && (
-        <p className="page-note">
-          <b>Chart Code</b> — Mermaid diagrams synced to your Vela account. Changes save to the cloud and appear on
-          Vela web and mobile too. Click a chart to edit.
-        </p>
-      )}
+    <main className="page desktop-workspace" aria-label="Chart Code">
       {error && (
         <div style={{
           padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 13, fontSize: 12,
@@ -152,6 +136,6 @@ export function ChartCodeApp() {
           onDelete={remove}
         />
       )}
-    </div>
+    </main>
   );
 }

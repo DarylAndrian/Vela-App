@@ -4,7 +4,8 @@ export interface NativeResult {
   ok: boolean;
   canceled?: boolean;
   outputDir?: string;
-  results?: { outputName: string; ok: boolean; error?: string }[];
+  outputPath?: string;
+  results?: { outputName: string; outputPath?: string; ok: boolean; error?: string }[];
   error?: string;
 }
 
@@ -31,6 +32,7 @@ export async function runNativeJobs(
 
   let outputDir: string;
   let singleName: string | null = null;
+  let overwrite = false;
 
   if (entries.length === 1) {
     const save = await media.pickSave({
@@ -41,6 +43,7 @@ export async function runNativeJobs(
     outputDir = save.dir;
     // Force the target extension so ffmpeg picks the right container/codec.
     singleName = `${stem(save.name ?? entries[0].outputName)}.${format}`;
+    overwrite = singleName.toLowerCase() === save.name?.toLowerCase();
   } else {
     const folder = await media.pickFolder();
     if (!folder.ok || !folder.dir) return { ok: false, canceled: true };
@@ -60,8 +63,8 @@ export async function runNativeJobs(
   });
 
   try {
-    const result = await media.convert({ jobId, outputDir, jobs });
-    return { ...result, outputDir };
+    const result = await media.convert({ jobId, outputDir, jobs, overwrite });
+    return { ...result, outputDir, outputPath: jobs.length === 1 ? result.results?.[0]?.outputPath : undefined };
   } finally {
     unsubscribe();
   }

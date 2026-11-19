@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme } = require('electron');
 const path = require('path');
 const config = require('./config');
 const services = require('./services');
@@ -20,6 +20,8 @@ if (SMOKE) app.setPath('userData', path.join(app.getPath('temp'), 'vela-smoke'))
 if (process.argv.includes('--shots')) app.disableHardwareAcceleration();
 const gotLock = app.requestSingleInstanceLock();
 let win = null;
+let navigation = 0;
+let chartAfterConnect = false;
 
 if (!gotLock) {
   app.quit();
@@ -43,7 +45,7 @@ if (!gotLock) {
       minHeight: 640,
       title: 'Vela',
       autoHideMenuBar: true,
-      backgroundColor: '#0a0e18',
+      backgroundColor: nativeTheme.shouldUseDarkColors ? '#0b0b0d' : '#f7f7f8',
       icon: path.join(__dirname, '..', '..', 'assets', 'icon.png'),
       webPreferences: {
         preload: path.join(__dirname, '..', 'preload', 'preload.js'),
@@ -65,12 +67,16 @@ if (!gotLock) {
       case 'coming-soon':
         return;
       case 'native': {
-        if (svc.needsAuth && !(await velaApi.status()).connected) {
+        const request = ++navigation;
+        chartAfterConnect = false;
+        const connected = !svc.needsAuth || (await velaApi.status()).connected;
+        if (request !== navigation) return;
+        if (!connected) {
+          chartAfterConnect = true;
           viewManager.openLocal('connect', `${FEATURES_BASE}/connect.html`);
           return;
         }
         viewManager.openLocal(id, `${FEATURES_BASE}/${svc.page}`);
-        if (id === 'media-converter') modelCache.prefetch();
         return;
       }
       case 'external': {
@@ -88,8 +94,30 @@ if (!gotLock) {
 
   function notify(channel, payload) {
     send(channel, payload);
-    const view = viewManager.getView();
-    if (view && !view.webContents.isDestroyed()) view.webContents.send(channel, payload);
+    viewManager.notifyViews(channel, payload);
+  }
+
+  function applyAppearance(theme) {
+    nativeTheme.themeSource = theme === 'dark' || theme === 'light' ? theme : 'system';
+  }
+
+  function accountChanged(connected) {
+    send('service:state', { type: 'account-changed' });
+    if (connected) {
+      if (chartAfterConnect) {
+        ++navigation;
+        chartAfterConnect = false;
+        viewManager.openLocal('chart-code', `${FEATURES_BASE}/chart-code.html`);
+      }
+      return;
+    }
+    const activeChart = viewManager.getViewId() === 'chart-code';
+    viewManager.discard('chart-code');
+    if (activeChart) {
+      ++navigation;
+      chartAfterConnect = true;
+      viewManager.openLocal('connect', `${FEATURES_BASE}/connect.html`);
+    }
   }
 
   function registerIpc() {
@@ -97,20 +125,23 @@ if (!gotLock) {
     ipcMain.handle('config:get', () => ({ ...config.load(), configPath: config.configPath() }));
     ipcMain.handle('config:save', (_e, cfg) => {
       const saved = config.save(cfg);
+      applyAppearance(saved.theme);
       velaApi.syncBaseUrl();
       notify('service:state', { type: 'theme:changed', theme: saved.theme });
       send('services:refresh');
       return saved;
     });
     ipcMain.handle('service:open', (_e, id) => openService(id));
-    ipcMain.handle('native:open', (_e, page) => {
-      const allowed = ['connect.html', 'chart-code.html', 'picture-connector.html', 'taiwan-year.html', 'velapt.html', 'media-converter.html'];
-      if (!allowed.includes(page)) return;
-      viewManager.openLocal(page.replace('.html', ''), `${FEATURES_BASE}/${page}`);
-      if (page === 'media-converter.html') modelCache.prefetch();
+    ipcMain.handle('workspace:show', (_e, destination) => {
+      if (!['home', 'settings', 'account'].includes(destination)) return;
+      ++navigation;
+      chartAfterConnect = false;
+      if (destination === 'account') viewManager.openLocal('connect', `${FEATURES_BASE}/connect.html`);
+      else viewManager.showShell(destination);
     });
-    ipcMain.handle('nav:back', () => viewManager.navBack());
-    ipcMain.handle('nav:home', () => viewManager.goHome());
+    ipcMain.on('workspace:bounds', (event, bounds) => {
+      if (event.sender === win.webContents) viewManager.setWorkspace(bounds);
+    });
     ipcMain.handle('config:reveal', () => shell.showItemInFolder(config.configPath()));
     ipcMain.handle('dialog:locate', async () => {
       const result = await dialog.showOpenDialog(win, {
@@ -120,7 +151,7 @@ if (!gotLock) {
       });
       return result.canceled ? null : result.filePaths[0];
     });
-    velaApi.registerIpc({ notify });
+    velaApi.registerIpc({ notify, getWindow: () => win, accountChanged });
     mediaEngine.registerIpc({ notify, getWindow: () => win });
     imageEngine.registerIpc();
     modelCache.registerIpc({ notify });
@@ -141,25 +172,40 @@ if (!gotLock) {
       check('velapt card available', list.find((s) => s.id === 'velapt').state === 'available');
       check('taiwan-year card available', list.find((s) => s.id === 'taiwan-year').state === 'available');
       check('config round-trip', !!config.save(config.load()).velaBaseUrl);
-      const homeState = await win.webContents.executeJavaScript(`({
-        signIn: !!document.getElementById('signInBtn'),
-        chip: !!document.getElementById('accountChip'),
-      })`);
-      check('home sign-in control renders', homeState.signIn && homeState.chip, JSON.stringify(homeState));
+      const homeState = await win.webContents.executeJavaScript(`(async () => {
+        const waitFor = async (ready) => {
+          for (let i = 0; i < 40 && !ready(); i++) await new Promise((resolve) => setTimeout(resolve, 25));
+          return ready();
+        };
+        await waitFor(() => document.querySelectorAll('#toolNav button').length === 5);
+        await window.launcher.showWorkspace('settings');
+        const settings = await waitFor(() => !document.getElementById('settingsPanel').hidden);
+        const account = document.getElementById('accountBtn').textContent;
+        await window.launcher.showWorkspace('home');
+        const home = await waitFor(() => !document.getElementById('homeScroll').hidden);
+        return {
+          destinations: document.querySelectorAll('#toolNav button').length,
+          launches: document.querySelectorAll('#cardGrid [data-id]').length,
+          settings, account, home,
+        };
+      })()`);
+      check('persistent rail, Settings and launcher render', homeState.destinations === 5 &&
+        homeState.launches === 7 && homeState.settings && homeState.account && homeState.home, JSON.stringify(homeState));
       check('tasklist probe works (explorer.exe running)', await externalApps.isRunning('explorer.exe'));
-      viewManager.open('smoke', 'data:text/html,<h1>smoke</h1>', false);
-      check('view opens', viewManager.isOpen());
-      viewManager.goHome();
-      check('view closes on home', !viewManager.isOpen());
       const wc = await new Promise((resolve) => {
         viewManager.openLocal('smoke-native', `${FEATURES_BASE}/chart-code.html`);
         const webContents = viewManager.getView().webContents;
         webContents.once('did-finish-load', () => resolve(webContents));
         setTimeout(() => resolve(webContents), 5000);
       });
-      const nativeText = await wc.executeJavaScript('document.body.innerText');
-      check('native chart-code page loads', nativeText.includes('Chart Code'), nativeText.slice(0, 60));
-      viewManager.goHome();
+      const nativeLoaded = await wc.executeJavaScript(`!!document.querySelector('[aria-label="Chart Code"]')`);
+      check('native chart-code page loads', nativeLoaded);
+      check('local workspace is visible beside the rail', viewManager.getView().getBounds().x > 0);
+      viewManager.showShell();
+      check('Home deactivates the embedded workspace', viewManager.getView() === null && !wc.isDestroyed());
+      viewManager.openLocal('smoke-native', `${FEATURES_BASE}/chart-code.html`);
+      check('returning to a workspace reuses its renderer', viewManager.getView().webContents === wc);
+      viewManager.showShell();
       const pcWc = await new Promise((resolve) => {
         viewManager.openLocal('smoke-pc', `${FEATURES_BASE}/picture-connector.html`);
         const webContents = viewManager.getView().webContents;
@@ -189,7 +235,7 @@ if (!gotLock) {
         };
       })()`);
       check('picture-connector composites pasted images', pcResult.hasCanvas && pcResult.w > 0 && pcResult.thumbs === 2, JSON.stringify(pcResult));
-      viewManager.goHome();
+      viewManager.showShell();
 
       // Chart Code editor E2E with stubbed storage/IPC (no network needed).
       const stubCalls = [];
@@ -204,11 +250,15 @@ if (!gotLock) {
         stubCalls.push({ id, ...changes });
         return { ok: true, data: chart(id, changes.title, changes.mmd_code) };
       });
-      ipcMain.removeHandler('files:save');
-      ipcMain.handle('files:save', (_e, { defaultName }) => {
-        stubCalls.push({ saved: defaultName });
-        return `C:\\smoke\\${defaultName}`;
-      });
+      const fs = require('fs');
+      const os = require('os');
+      const smokeExports = fs.mkdtempSync(path.join(os.tmpdir(), 'vela-smoke-exports-'));
+      const origSaveDialog = dialog.showSaveDialog;
+      const recordSave = async (_window, options) => {
+        stubCalls.push({ saved: options.defaultPath });
+        return { canceled: false, filePath: path.join(smokeExports, options.defaultPath) };
+      };
+      dialog.showSaveDialog = recordSave;
       const ccWc = await new Promise((resolve) => {
         viewManager.openLocal('smoke-cc', `${FEATURES_BASE}/chart-code.html`);
         const webContents = viewManager.getView().webContents;
@@ -219,7 +269,7 @@ if (!gotLock) {
         const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         const out = {};
         await sleep(1500); // let React mount the list
-        const card = document.querySelector('.card');
+        const card = document.querySelector('.chart-open');
         if (!card) return { error: 'no chart card in list' };
         card.click();
         await sleep(2500); // mermaid render
@@ -237,10 +287,11 @@ if (!gotLock) {
         const exportBtn = buttons.find((b) => b.textContent.includes('Export'));
         if (exportBtn) exportBtn.click();
         await sleep(400);
-        const svgItem = [...document.querySelectorAll('div')].find((d) => d.textContent === 'SVG' && d.style && d.style.cursor === 'pointer');
+        const svgItem = [...document.querySelectorAll('.chart-format')].find((button) => button.textContent === 'SVG');
         if (svgItem) svgItem.click();
         await sleep(1500);
-        out.toast = [...document.querySelectorAll('.toast')].map((t) => t.textContent).join(' | ');
+        out.toast = document.querySelector('.chart-export-result')?.textContent || '';
+        out.savedNotice = !!document.querySelector('.chart-export-result .reveal-output');
         const saveBtn = buttons.find((b) => b.textContent.includes('Save'));
         if (saveBtn) saveBtn.click();
         await sleep(600);
@@ -249,9 +300,9 @@ if (!gotLock) {
       })()`);
       check('chart-code renders mermaid in editor', ccResult.renderedSvg && ccResult.nodeCount >= 3, JSON.stringify(ccResult).slice(0, 120));
       check('chart-code node style write-back', ccResult.toolbarShown && ccResult.styleLine.includes('font-weight:bold'), ccResult.styleLine);
-      check('chart-code SVG export saves file', (ccResult.toast || '').includes('Saved') && stubCalls.some((c) => c.saved && c.saved.endsWith('.svg')), ccResult.toast);
+      check('chart-code SVG export saves file', ccResult.savedNotice && stubCalls.some((c) => c.saved?.endsWith('.svg') && fs.existsSync(path.join(smokeExports, c.saved))), ccResult.toast);
       check('chart-code save clears dirty state', (ccResult.saveBadge || '').includes('All changes saved') && stubCalls.some((c) => c.mmd_code !== undefined), ccResult.saveBadge);
-      viewManager.goHome();
+      viewManager.showShell();
 
       // VelaPTP built-in screen E2E: samples -> crop -> export via stubbed files:save.
       const vpWc = await new Promise((resolve) => {
@@ -308,12 +359,12 @@ if (!gotLock) {
       }
       check('velapt samples + crop stage render', vpStart.thumbs === 3 && vpStart.cropStage && vpStart.wrapW > 300 && vpStart.canvasW > 0 && vpStart.uploadHidden && /[0-9]+ × [0-9]+ PX/.test(vpStart.readout), JSON.stringify(vpStart).slice(0, 140));
       check('velapt wizard reaches export step', (vpStart.step3 || '').includes('Step 3') && vpStart.filenameVisible, vpStart.step3);
-      check('velapt export saves PDF via native dialog', !!pdfSaved, pdfSaved ? pdfSaved.saved : 'no files:save call');
+      check('velapt export saves PDF via native dialog', !!pdfSaved && fs.existsSync(path.join(smokeExports, pdfSaved.saved)), pdfSaved ? pdfSaved.saved : 'no files:save call');
       await vpWc.executeJavaScript('history.back(); true');
       await new Promise((r) => setTimeout(r, 700));
       const backStep = await vpWc.executeJavaScript('((document.getElementById("barKicker") || {}).textContent || "")');
       check('velapt back-button steps wizard back', backStep.includes('Step 2'), backStep);
-      viewManager.goHome();
+      viewManager.showShell();
 
       // Paste intake E2E: a clipboard image loads as a photo.
       const pasteWc = await new Promise((resolve) => {
@@ -341,7 +392,7 @@ if (!gotLock) {
         };
       })()`);
       check('velapt paste loads image from clipboard', pasteResult.thumbs === 1 && pasteResult.count === '01' && pasteResult.img === 'yes', JSON.stringify(pasteResult));
-      viewManager.goHome();
+      viewManager.showShell();
 
       // Taiwan Year Calculator E2E: both conversion directions.
       const tyWc = await new Promise((resolve) => {
@@ -375,15 +426,11 @@ if (!gotLock) {
       })()`);
       check('taiwan-year converts Gregorian to Minguo', tyResult.toMinguo.includes('Year 114'), JSON.stringify(tyResult).slice(0, 120));
       check('taiwan-year converts Minguo to Gregorian', tyResult.toGregorian.includes('Year 2025') && tyResult.clearedGregorian, JSON.stringify(tyResult).slice(0, 120));
-      viewManager.goHome();
+      viewManager.showShell();
 
       // Media Converter native engine E2E: real ffmpeg through the preload IPC.
-      const fs = require('fs');
-      const os = require('os');
       const { spawn } = require('child_process');
-      const mediaTmp = path.join(os.tmpdir(), 'vela-media-smoke');
-      fs.rmSync(mediaTmp, { recursive: true, force: true });
-      fs.mkdirSync(mediaTmp, { recursive: true });
+      const mediaTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vela-media-smoke-'));
       const ffmpegBin = mediaEngine.resolveFfmpeg();
       check('media ffmpeg binary resolves', !!ffmpegBin && fs.existsSync(ffmpegBin), ffmpegBin || 'missing');
       const runFf = (args) => new Promise((resolve) => {
@@ -400,17 +447,34 @@ if (!gotLock) {
       check('media fixtures generated', fs.existsSync(clipA) && fs.existsSync(clipB) && fs.existsSync(clipLong));
 
       const mcWc = await new Promise((resolve) => {
-        viewManager.openLocal('smoke-mc', `${FEATURES_BASE}/media-converter.html`);
+        viewManager.openLocal('media-converter', `${FEATURES_BASE}/media-converter.html`);
         const webContents = viewManager.getView().webContents;
         webContents.once('did-finish-load', () => resolve(webContents));
         setTimeout(() => resolve(webContents), 5000);
       });
       await new Promise((r) => setTimeout(r, 1500));
       const mcHome = await mcWc.executeJavaScript(`({
-        cards: document.querySelectorAll('main a[href^="#/"]').length,
+        modes: document.querySelectorAll('[role="tab"]').length,
+        active: document.querySelector('[role="tab"][aria-selected="true"]')?.textContent.trim(),
+        addFiles: !!document.querySelector('.mc-add-files'),
         bridge: !!window.launcher?.media,
       })`);
-      check('media-converter home renders 6 tools', mcHome.cards === 6 && mcHome.bridge, JSON.stringify(mcHome));
+      check('media converter opens directly to image conversion', mcHome.modes === 6 && mcHome.active === 'Convert images' && mcHome.addFiles && mcHome.bridge, JSON.stringify(mcHome));
+      const [wideWidth, wideHeight] = win.getSize();
+      win.setSize(960, 640);
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      const compactBounds = viewManager.getView().getBounds();
+      const compactControls = await mcWc.executeJavaScript(`(() => {
+        const visible = (selector) => {
+          const rect = document.querySelector(selector).getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0 && rect.bottom <= innerHeight;
+        };
+        return visible('.mc-add-files') && visible('.mc-actionbar .mc-actions button');
+      })()`);
+      check('minimum window size keeps Media Converter actions visible', compactBounds.x === 64 && compactControls,
+        JSON.stringify(compactBounds));
+      win.setSize(wideWidth, wideHeight);
+      await new Promise((resolve) => setTimeout(resolve, 350));
       const probe = await mcWc.executeJavaScript('window.launcher.media.ffmpegProbe()');
       check('media ffmpeg probe via preload', probe.ok && /ffmpeg version/.test(probe.version || ''), probe.version || probe.error);
 
@@ -443,28 +507,49 @@ if (!gotLock) {
       check('re-encode emits fractional progress', engineOut.fallbackRatios.some((r) => r > 0 && r < 1) && engineOut.fallbackRatios.includes(1), JSON.stringify(engineOut.fallbackRatios).slice(0, 100));
       check('batch audio extraction saves mp3s', engineOut.audio.ok === true && fs.existsSync(path.join(mediaTmp, 'out-a.mp3')) && fs.existsSync(path.join(mediaTmp, 'out-b.mp3')), JSON.stringify(engineOut.audio).slice(0, 100));
 
-      const cancelOut = await mcWc.executeJavaScript(`(async () => {
-        const media = window.launcher.media;
-        const pending = media.convert({ jobId: 'smoke-cancel', outputDir: ${JSON.stringify(mediaTmp)}, jobs: [
+      const priorAudio = fs.readFileSync(path.join(mediaTmp, 'out-a.mp3'));
+      const partial = await mcWc.executeJavaScript(`window.launcher.media.convert({
+        jobId: 'smoke-partial', outputDir: ${JSON.stringify(mediaTmp)}, jobs: [
+          { inputPath: ${JSON.stringify(clipA)}, outputName: 'out-a.mp3', kind: 'audio', format: 'mp3', mode: 'extract' },
+          { inputPath: ${JSON.stringify(path.join(mediaTmp, 'missing.mp4'))}, outputName: 'out-b.mp3', kind: 'audio', format: 'mp3', mode: 'extract' },
+        ],
+      })`);
+      check('batch collisions and partial failures preserve existing outputs', !partial.ok &&
+        partial.results[0].outputName === 'out-a (1).mp3' && !partial.results[1].ok &&
+        fs.existsSync(path.join(mediaTmp, 'out-b.mp3')) && priorAudio.equals(fs.readFileSync(path.join(mediaTmp, 'out-a.mp3'))));
+
+      await mcWc.executeJavaScript(`window.smokePendingJob = window.launcher.media.convert({
+        jobId: 'smoke-cancel', outputDir: ${JSON.stringify(mediaTmp)}, jobs: [
           { inputPath: ${JSON.stringify(clipLong)}, outputName: 'out-cancel.webm', kind: 'video', format: 'webm', mode: 'reencode' },
-        ] });
-        await new Promise((r) => setTimeout(r, 900));
-        const ack = await media.cancelJob('smoke-cancel');
-        const result = await pending;
+        ],
+      }); true`);
+      await win.webContents.executeJavaScript(`window.launcher.showWorkspace('settings')`);
+      const activityVisible = await win.webContents.executeJavaScript(`(async () => {
+        const indicator = document.querySelector('[data-destination="media-converter"] .nav-activity');
+        for (let i = 0; i < 20 && indicator.hidden; i++) await new Promise((resolve) => setTimeout(resolve, 20));
+        return !indicator.hidden;
+      })()`);
+      check('running conversion stays visible from Settings', activityVisible && viewManager.getView() === null);
+      await win.webContents.executeJavaScript(`window.launcher.openService('media-converter')`);
+      check('Media Converter resumes its active renderer', viewManager.getView()?.webContents === mcWc);
+      const cancelOut = await mcWc.executeJavaScript(`(async () => {
+        const ack = await window.launcher.media.cancelJob('smoke-cancel');
+        const result = await window.smokePendingJob;
         return { ack, result };
       })()`);
-      check('cancel stops job and cleans output', cancelOut.ack.ok === true && cancelOut.result.canceled === true && cancelOut.result.ok === false && !fs.existsSync(path.join(mediaTmp, 'out-cancel.webm')), JSON.stringify(cancelOut.result).slice(0, 120));
+      check('cancel stops job and cleans output', cancelOut.ack.ok === true && cancelOut.result.canceled === true &&
+        cancelOut.result.ok === false && !fs.existsSync(path.join(mediaTmp, 'out-cancel.webm')) &&
+        !fs.readdirSync(mediaTmp).some((name) => name.startsWith('.vela-')), JSON.stringify(cancelOut.result).slice(0, 120));
 
       // Video tool UI: engine-ready state, then a real drag-drop via CDP if supported.
       await mcWc.executeJavaScript(`location.hash = '#/video'; true`);
       await new Promise((r) => setTimeout(r, 900));
       const videoUi = await mcWc.executeJavaScript(`({
-        ready: [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Convert and save'),
+        ready: [...document.querySelectorAll('#media-panel-2 .mc-actions button')].some((b) => b.textContent.trim() === 'Convert and save'),
         formats: [...document.getElementById('video-output-format').options].map((o) => o.value).join(','),
       })`);
       check('video tool mounts engine-ready', videoUi.ready && videoUi.formats === 'mp4,mov,avi,mkv,webm', JSON.stringify(videoUi));
 
-      const origSaveDialog = dialog.showSaveDialog;
       dialog.showSaveDialog = async () => ({ canceled: false, filePath: path.join(mediaTmp, 'ui-out.mov') });
       await mcWc.executeJavaScript(`window.__droppedFiles = [];
         document.addEventListener('drop', (e) => { window.__droppedFiles = [...(e.dataTransfer?.files || [])]; }, { capture: true, once: true });
@@ -475,7 +560,7 @@ if (!gotLock) {
         dbg.attach('1.3');
         await dbg.sendCommand('Input.setInterceptDrags', { enabled: true });
         const rect = await mcWc.executeJavaScript(`(() => {
-          const el = document.querySelector('input[type="file"]').parentElement;
+          const el = document.querySelector('[role="tabpanel"]:not([hidden]) input[type="file"]').parentElement;
           const r = el.getBoundingClientRect();
           return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
         })()`);
@@ -503,7 +588,7 @@ if (!gotLock) {
           await sleep(200);
           const progressSeen = [];
           const unsub = window.launcher.media.onJobProgress((p) => progressSeen.push(p.ratio));
-          const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Convert and save');
+          const btn = [...document.querySelectorAll('#media-panel-2 .mc-actions button')].find((b) => b.textContent.trim() === 'Convert and save');
           btn.click();
           let saved = false;
           for (let i = 0; i < 40; i++) {
@@ -514,7 +599,7 @@ if (!gotLock) {
           return {
             saved,
             progressSeen,
-            revealBtn: [...document.querySelectorAll('button')].some((b) => b.textContent.includes('Show in folder')),
+            revealBtn: [...document.querySelectorAll('button')].some((b) => b.textContent.includes('Show in File Explorer')),
             alerts: [...document.querySelectorAll('[role="alert"],[role="status"]')].map((a) => a.textContent).join(' | '),
           };
         })()`);
@@ -525,11 +610,11 @@ if (!gotLock) {
           const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
           const dt = new DataTransfer();
           dt.items.add(new File([new Uint8Array(16)], 'clip-a.mp4', { type: 'video/mp4' }));
-          const zone = document.querySelector('input[type="file"]').parentElement;
+          const zone = document.querySelector('[role="tabpanel"]:not([hidden]) input[type="file"]').parentElement;
           zone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
           await sleep(600);
           const listed = document.body.innerText.includes('clip-a.mp4');
-          const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Convert and save');
+          const btn = [...document.querySelectorAll('#media-panel-2 .mc-actions button')].find((b) => b.textContent.trim() === 'Convert and save');
           if (btn && !btn.disabled) btn.click();
           await sleep(800);
           return { listed, pathError: document.body.innerText.includes('read the file path') };
@@ -538,6 +623,11 @@ if (!gotLock) {
         check('video UI reports missing native path gracefully', fallbackUi.pathError, JSON.stringify(fallbackUi));
       }
       dialog.showSaveDialog = origSaveDialog;
+      await win.webContents.executeJavaScript(`window.launcher.showWorkspace('home')`);
+      await win.webContents.executeJavaScript(`window.launcher.openService('media-converter')`);
+      const retainedVideo = await mcWc.executeJavaScript(`!document.getElementById('media-panel-2').hidden &&
+        document.getElementById('media-panel-2').innerText.includes('clip-a.mp4')`);
+      check('Media Converter remembers the active mode and file on return', retainedVideo);
 
       await mcWc.executeJavaScript(`location.hash = '#/video-to-audio'; true`);
       await new Promise((r) => setTimeout(r, 700));
@@ -547,8 +637,12 @@ if (!gotLock) {
       })`);
       check('video-to-audio tool mounts', audioUi.ready && audioUi.formats === 'mp3,wav,m4a,ogg,flac,opus', JSON.stringify(audioUi));
 
+      dialog.showSaveDialog = async () => ({ canceled: true });
+      const canceledSave = await mcWc.executeJavaScript(`window.vela.files.save('cancel.png', [], 'eA==')`);
+      check('dismissing Save As returns without writing an output', canceledSave === null);
+
       // Image engine E2E: sharp convert/compress through the preload IPC, plus
-      // the blob download path (will-download -> saved to disk).
+      // the Windows save path (dialog -> saved to disk).
       const sharp = require('sharp');
       const imgSrc = await sharp({ create: { width: 480, height: 320, channels: 3, background: '#3a7bd5' } }).jpeg({ quality: 95 }).toBuffer();
       const tiffBuf = await sharp(imgSrc).tiff().toBuffer();
@@ -583,11 +677,8 @@ if (!gotLock) {
       check('image compress GIF hits byte target as GIF', imgOut.compressGif.ok && imgOut.compressGif.extension === 'gif' && byteLen(imgOut.compressGif.dataBase64) < 20000 && magic(imgOut.compressGif.dataBase64, 0, 4) === 'GIF8', JSON.stringify({ ok: imgOut.compressGif.ok, ext: imgOut.compressGif.extension, bytes: byteLen(imgOut.compressGif.dataBase64), err: imgOut.compressGif.error }));
       check('image compress HEIC keep -> JPG under target', imgOut.compressHeic.ok && imgOut.compressHeic.extension === 'jpg' && byteLen(imgOut.compressHeic.dataBase64) < 100000, JSON.stringify({ ok: imgOut.compressHeic.ok, ext: imgOut.compressHeic.extension, bytes: byteLen(imgOut.compressHeic.dataBase64), err: imgOut.compressHeic.error }));
 
-      // Route smoke downloads into the temp dir instead of the real Downloads.
-      const { session } = require('electron');
-      session.defaultSession.removeAllListeners('will-download');
-      session.defaultSession.on('will-download', (_e, item) => {
-        item.setSavePath(path.join(mediaTmp, item.getFilename()));
+      dialog.showSaveDialog = async (_window, { defaultPath }) => ({
+        canceled: false, filePath: path.join(mediaTmp, defaultPath),
       });
 
       await mcWc.executeJavaScript(`location.hash = '#/convert'; true`);
@@ -597,7 +688,7 @@ if (!gotLock) {
         const bytes = Uint8Array.from(atob('${tiffBuf.toString('base64')}'), (c) => c.charCodeAt(0));
         const dt = new DataTransfer();
         dt.items.add(new File([bytes], 'fixture.tiff', { type: 'image/tiff' }));
-        const zone = document.querySelector('input[type="file"]').parentElement;
+        const zone = document.querySelector('[role="tabpanel"]:not([hidden]) input[type="file"]').parentElement;
         zone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
         await sleep(600);
         const select = document.getElementById('output-format');
@@ -605,16 +696,26 @@ if (!gotLock) {
         setter.call(select, 'jpg');
         select.dispatchEvent(new Event('change', { bubbles: true }));
         await sleep(200);
-        const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Convert and download');
+        const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Convert and save');
         btn.click();
         let done = false;
         for (let i = 0; i < 30; i++) {
           await sleep(500);
-          if (document.body.innerText.includes('Downloaded fixture.jpg.')) { done = true; break; }
+          if (document.body.innerText.includes('Saved fixture.jpg.')) { done = true; break; }
         }
         return { done, alerts: [...document.querySelectorAll('[role="alert"],[role="status"]')].map((a) => a.textContent).join(' | ') };
       })()`);
-      check('convert UI TIFF -> JPG downloads via main engine', convUi.done && fs.existsSync(path.join(mediaTmp, 'fixture.jpg')), JSON.stringify(convUi).slice(0, 180));
+      check('convert UI TIFF -> JPG saves via main engine', convUi.done && fs.existsSync(path.join(mediaTmp, 'fixture.jpg')), JSON.stringify(convUi).slice(0, 180));
+      const revealInExplorer = shell.showItemInFolder;
+      const fixturePath = path.join(mediaTmp, 'fixture.jpg');
+      let revealedPath;
+      try {
+        shell.showItemInFolder = (target) => { revealedPath = target; };
+        const revealed = await mcWc.executeJavaScript(`window.vela.files.reveal(${JSON.stringify(fixturePath)})`);
+        check('show in File Explorer resolves the saved file', revealed.ok && revealedPath === fixturePath);
+      } finally {
+        shell.showItemInFolder = revealInExplorer;
+      }
 
       await mcWc.executeJavaScript(`location.hash = '#/compress'; true`);
       await new Promise((r) => setTimeout(r, 700));
@@ -623,7 +724,7 @@ if (!gotLock) {
         const bytes = Uint8Array.from(atob('${gifBuf.toString('base64')}'), (c) => c.charCodeAt(0));
         const dt = new DataTransfer();
         dt.items.add(new File([bytes], 'fixture.gif', { type: 'image/gif' }));
-        const zone = document.querySelector('input[type="file"]').parentElement;
+        const zone = document.querySelector('[role="tabpanel"]:not([hidden]) input[type="file"]').parentElement;
         zone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
         await sleep(600);
         const selectSetter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
@@ -639,12 +740,12 @@ if (!gotLock) {
         inputSetter.call(sizeInput, '5');
         sizeInput.dispatchEvent(new Event('input', { bubbles: true }));
         await sleep(200);
-        const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Compress and download');
+        const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Compress and save');
         btn.click();
         let done = false;
         for (let i = 0; i < 60; i++) {
           await sleep(500);
-          if (document.body.innerText.includes('Downloaded fixture.gif')) { done = true; break; }
+          if (document.body.innerText.includes('Saved fixture.gif')) { done = true; break; }
         }
         return { done, alerts: [...document.querySelectorAll('[role="alert"],[role="status"]')].map((a) => a.textContent).join(' | ') };
       })()`);
@@ -697,30 +798,33 @@ if (!gotLock) {
         const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
         const dt = new DataTransfer();
         dt.items.add(new File([blob], 'subject.png', { type: 'image/png' }));
-        const zone = document.querySelector('input[type="file"]').parentElement;
+        const zone = document.querySelector('[role="tabpanel"]:not([hidden]) input[type="file"]').parentElement;
         zone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
         await sleep(600);
-        const fastBtn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Fast');
-        fastBtn.click();
+        const quality = document.getElementById('bg-quality');
+        const setQuality = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
+        setQuality.call(quality, 'fast');
+        quality.dispatchEvent(new Event('change', { bubbles: true }));
         await sleep(200);
-        const runBtn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Remove background');
+        const runBtn = [...document.querySelectorAll('#media-panel-4 .mc-actions button')]
+          .find((b) => b.textContent.trim() === 'Remove background');
         if (!runBtn || runBtn.disabled) return { error: 'run button missing or gated', listed: document.body.innerText.includes('subject.png') };
         runBtn.click();
         let done = false;
         for (let i = 0; i < 150; i++) {
           await sleep(1000);
-          if ([...document.querySelectorAll('button')].some((b) => b.textContent.includes('Download transparent PNG'))) { done = true; break; }
+          if ([...document.querySelectorAll('button')].some((b) => b.textContent.includes('Save PNG…'))) { done = true; break; }
         }
         if (!done) return { error: 'inference timed out', text: document.body.innerText.slice(-300) };
-        const img = document.querySelector('img[alt="Result"]');
+        const img = document.querySelector('img[alt="Background removed"]');
         const rc = document.createElement('canvas'); rc.width = img.naturalWidth; rc.height = img.naturalHeight;
         const rctx = rc.getContext('2d'); rctx.drawImage(img, 0, 0);
         const corner = rctx.getImageData(2, 2, 1, 1).data[3];
         const center = rctx.getImageData(128, 128, 1, 1).data[3];
-        const dlBtn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('Download transparent PNG'));
+        const dlBtn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('Save PNG…'));
         dlBtn.click();
         await sleep(800);
-        return { done, w: img.naturalWidth, h: img.naturalHeight, corner, center, note: document.body.innerText.includes('Saved to your Downloads folder.') };
+        return { done, w: img.naturalWidth, h: img.naturalHeight, corner, center, note: document.body.innerText.includes('Saved subject-nobg.png.') };
       })()`);
       const nobgPath = path.join(mediaTmp, 'subject-nobg.png');
       let nobgCorner = -1;
@@ -741,23 +845,36 @@ if (!gotLock) {
           const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
           const status = await window.launcher.media.ensureModels('high');
           if (!status.highReady) return { error: status.error || 'high tier failed' };
-          const reprocess = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Re-process');
-          reprocess.click();
-          await sleep(300);
-          const highBtn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'High quality');
-          highBtn.click();
+          const quality = document.getElementById('bg-quality');
+          const setQuality = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
+          setQuality.call(quality, 'high');
+          quality.dispatchEvent(new Event('change', { bubbles: true }));
           await sleep(200);
-          const runBtn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Remove background');
+          const runBtn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Reprocess');
           runBtn.click();
           for (let i = 0; i < 180; i++) {
             await sleep(1000);
-            if ([...document.querySelectorAll('button')].some((b) => b.textContent.includes('Download transparent PNG'))) return { ok: true };
+            if (document.querySelector('img[alt="Background removed"]')) return { ok: true };
           }
           return { error: 'high inference timed out' };
         })()`);
         const isnetSize = (() => { try { return fs.statSync(path.join(modelDir, 'resources.json')).size > 0 ? JSON.parse(fs.readFileSync(path.join(modelDir, 'resources.json'), 'utf8'))['/models/isnet'].size : 0; } catch { return 0; } })();
         check('tier-2 high model + inference (VELA_SMOKE_HIGH)', highRun.ok === true && isnetSize === 176149806, JSON.stringify(highRun).slice(0, 160));
       }
+
+      dialog.showSaveDialog = origSaveDialog;
+
+      const statusBeforeSmoke = velaApi.status;
+      velaApi.status = async () => ({ connected: false });
+      await win.webContents.executeJavaScript(`window.launcher.openService('chart-code')`);
+      check('Chart Code prompts for sign-in when disconnected', viewManager.getViewId() === 'connect');
+      accountChanged(true);
+      check('sign-in resumes Chart Code', viewManager.getViewId() === 'chart-code');
+      notify('vela:auth-expired');
+      accountChanged(false);
+      check('expired Chart Code session returns to account', viewManager.getViewId() === 'connect');
+      viewManager.showShell();
+      velaApi.status = statusBeforeSmoke;
 
       // VelaIsland buildArgs CLI mapping.
       const islandSvc = services.byId('velaisland');
@@ -769,6 +886,20 @@ if (!gotLock) {
         && customArgs.includes('--opacity=60') && customArgs.includes('--position=bottom-left') && customArgs.includes('--hotkey=Ctrl+Shift+I')
         && !customArgs.includes('--widget-todos=on'), customArgs.join(' '));
       check('listWithStates hides private fields', list.every((s) => s.installer === undefined && s.buildArgs === undefined && s.candidates === undefined));
+      const originalOpenDialog = dialog.showOpenDialog;
+      const originalLaunch = externalApps.launch;
+      try {
+        dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [process.execPath] });
+        const located = await win.webContents.executeJavaScript(`window.launcher.locate('velaZoomPath')`);
+        check('companion Locate returns the selected executable', located === process.execPath);
+        let launched;
+        externalApps.launch = async (service) => { launched = service.id; return {}; };
+        await win.webContents.executeJavaScript(`window.launcher.openService('velazoom')`);
+        check('companion Open delegates to the Windows launcher', launched === 'velazoom');
+      } finally {
+        dialog.showOpenDialog = originalOpenDialog;
+        externalApps.launch = originalLaunch;
+      }
 
       // Installer downloadFile against an in-process HTTP server.
       const http = require('http');
@@ -859,7 +990,7 @@ if (!gotLock) {
         return out;
       })()`);
       check('install modal renders + idle cancel is a no-op', installUi.visible && installUi.retryHidden && installUi.idleCancelOk, JSON.stringify(installUi));
-      viewManager.goHome();
+      viewManager.showShell();
     } catch (err) {
       check('smoke crashed', false, err.message);
     }
@@ -874,6 +1005,7 @@ if (!gotLock) {
   app.whenReady().then(() => {
     featuresProtocol.serve();
     registerIpc();
+    applyAppearance(config.load().theme);
     createWindow();
     if (SMOKE) {
       win.webContents.on('did-finish-load', () => runSmoke());

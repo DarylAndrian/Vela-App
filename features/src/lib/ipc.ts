@@ -12,6 +12,7 @@ export interface VelaStatus {
   identity: VelaIdentity | null;
   daysRemaining: number | null;
   baseUrl: string;
+  error?: string;
 }
 
 export interface ChartCode {
@@ -52,6 +53,7 @@ interface VelaBridge {
   };
   files: {
     save(defaultName: string, filters: { name: string; extensions: string[] }[], dataBase64: string): Promise<string | null>;
+    reveal(target: string): Promise<{ ok: boolean }>;
     openImages(): Promise<{ name: string; dataBase64: string }[]>;
   };
   clipboard: {

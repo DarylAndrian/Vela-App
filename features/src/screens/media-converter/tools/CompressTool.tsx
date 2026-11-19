@@ -11,9 +11,11 @@ import {
   hasLargeFiles,
   type CompressFormatPreference,
 } from '../lib/client-compress';
-import { downloadBlob } from '../lib/download';
+import { outputName, saveOutput } from '../lib/save-output';
+import { RevealOutput } from '../../../components/RevealOutput';
 import { IMAGE_ACCEPT } from '../lib/media-accept';
 import { COMPRESS_DEFAULT_TARGET_BYTES } from '../lib/compress-defaults';
+import { useMediaActivity } from '../lib/use-media-activity';
 
 type SizeUnit = 'kb' | 'mb';
 
@@ -72,7 +74,7 @@ export function CompressTool() {
     null,
   );
   const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [saved, setSaved] = useState<{ path: string; detail: string } | null>(null);
 
   const targetBytes = useMemo(
     () => bytesForInput(sizeValue, sizeUnit),
@@ -94,27 +96,7 @@ export function CompressTool() {
   }, [files]);
 
   const canConvert = files.length > 0 && !loading;
-
-  const summary = useMemo(() => {
-    if (files.length === 0) {
-      return 'Add one or more images to get started. Compression runs on your computer.';
-    }
-
-    const formatLabel =
-      format === 'keep'
-        ? 'their original format'
-        : format.toUpperCase();
-
-    if (files.length === 1) {
-      return `Ready to compress ${files[0].name} (${formatSize(
-        files[0].size,
-      )}) to under ${formatSize(targetBytes)} as ${formatLabel}.`;
-    }
-
-    return `Ready to compress ${files.length} images (${formatSize(
-      files.reduce((sum, file) => sum + file.size, 0),
-    )} total) to under ${formatSize(targetBytes)} each as ${formatLabel} and download as a ZIP. Each image is processed one at a time.`;
-  }, [files, format, targetBytes]);
+  useMediaActivity('compress', loading);
 
   const handlePresetClick = (kilobytes: number) => {
     if (kilobytes >= 1024) {
@@ -134,7 +116,7 @@ export function CompressTool() {
     setLoading(true);
     setProgress(null);
     setError(null);
-    setSuccessMessage(null);
+    setSaved(null);
 
     try {
       if (files.length === 1) {
@@ -142,16 +124,13 @@ export function CompressTool() {
           files[0],
           clientOptions,
         );
-        downloadBlob(blob, filename);
+        const path = await saveOutput(blob, filename);
+        if (!path) return;
         const ratio = Math.max(
           0,
           Math.round(((files[0].size - blob.size) / files[0].size) * 100),
         );
-        setSuccessMessage(
-          `Downloaded ${filename} (${formatSize(files[0].size)} → ${formatSize(
-            blob.size,
-          )}, ${ratio}% smaller).`,
-        );
+        setSaved({ path, detail: `${formatSize(files[0].size)} → ${formatSize(blob.size)}, ${ratio}% smaller` });
       } else {
         setProgress({ completed: 0, total: files.length });
         const zipBlob = await compressFilesToZip(
@@ -161,11 +140,8 @@ export function CompressTool() {
             setProgress({ completed, total });
           },
         );
-        const filename = 'compressed-images.zip';
-        downloadBlob(zipBlob, filename);
-        setSuccessMessage(
-          `Downloaded ${filename} with ${files.length} compressed images.`,
-        );
+        const path = await saveOutput(zipBlob, 'compressed-images.zip');
+        if (path) setSaved({ path, detail: `${files.length} images` });
       }
     } catch (convertError) {
       setError(
@@ -186,7 +162,7 @@ export function CompressTool() {
       }
       return 'Compressing...';
     }
-    return 'Compress and download';
+    return 'Compress and save';
   })();
 
   const currentPresetMatch = SIZE_PRESETS.find((preset) => {
@@ -195,144 +171,115 @@ export function CompressTool() {
   });
 
   return (
-    <ToolShell
-      eyebrow="Image Compressor"
-      title="Compress images to a*target size*"
-      description="Add images, pick a budget, and download. An iterative quality + resize loop runs locally — no upload limits for JPG, PNG, WebP, GIF, and BMP. HEIC and TIFF use the built-in local engine."
-      features={[
-        {
-          title: 'Iterative quality loop',
-          body: 'Reduces quality from 85 → 30 in steps of 5, then resizes by 0.9x and repeats until the target size is met.',
-        },
-        {
-          title: 'Fully local',
-          body: 'JPG, PNG, WebP, GIF, and BMP are compressed on your computer and never uploaded.',
-        },
-        {
-          title: 'Smart format fallbacks',
-          body: 'GIF targets stay GIF via the local engine, TIFF compresses as PNG, and oversized PNGs drop to JPEG to hit your budget.',
-        },
-      ]}
-    >
-      <section className="mc-bento p-5 sm:p-6">
-        <div className="mb-4 grid gap-4 sm:grid-cols-2">
-          <div>
-            <label
-              htmlFor="compress-output-format"
-              className="mc-label"
-            >
-              Output format
-            </label>
-            <select
-              id="compress-output-format"
-              value={format}
-              onChange={(event) =>
-                setFormat(event.target.value as CompressFormatPreference)
-              }
-              className={FIELD_CLASSES}
-            >
-              {FORMAT_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label
-              htmlFor="compress-target-size"
-              className="mc-label"
-            >
-              Target size
-            </label>
-            <div className="flex gap-2">
-              <input
-                id="compress-target-size"
-                type="number"
-                min={1}
-                step={sizeUnit === 'mb' ? 0.1 : 10}
-                value={sizeValue}
-                onChange={(event) => {
-                  const next = Number(event.target.value);
-                  if (Number.isFinite(next) && next > 0) {
-                    setSizeValue(next);
-                  }
-                }}
-                className={FIELD_CLASSES}
-              />
-              <select
-                aria-label="Size unit"
-                value={sizeUnit}
-                onChange={(event) => {
-                  const nextUnit = event.target.value as SizeUnit;
-                  setSizeUnit(nextUnit);
-                  setSizeValue(inputValueForBytes(targetBytes, nextUnit));
-                }}
-                className={`${FIELD_CLASSES} w-24 shrink-0`}
+    <ToolShell settings={
+      <>
+          <div className="mb-4 grid gap-4">
+            <div>
+              <label
+                htmlFor="compress-output-format"
+                className="mc-label"
               >
-                <option value="kb">KB</option>
-                <option value="mb">MB</option>
+                Output format
+              </label>
+              <select
+                id="compress-output-format"
+                value={format}
+                disabled={loading}
+                onChange={(event) =>
+                  setFormat(event.target.value as CompressFormatPreference)
+                }
+                className={FIELD_CLASSES}
+              >
+                {FORMAT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </div>
-          </div>
-        </div>
 
-        <div role="group" aria-labelledby="compress-presets" className="mb-5 flex flex-wrap items-center gap-2">
-          <span id="compress-presets" className="mr-1 text-xs font-medium text-mut">
-            Presets
-          </span>
-          {SIZE_PRESETS.map((preset) => {
-            const isActive = currentPresetMatch?.label === preset.label;
-            return (
-              <button
-                key={preset.label}
-                type="button"
-                onClick={() => handlePresetClick(preset.kilobytes)}
-                aria-pressed={isActive}
-                className={`min-h-8 rounded-full border px-3 text-xs font-medium tabular-nums transition-colors duration-[120ms] ${
-                  isActive
-                    ? 'border-accent bg-accent-soft text-accent-text'
-                    : 'border-line-strong bg-surface text-mut hover:bg-hover hover:text-ink'
-                }`}
+            <div>
+              <label
+                htmlFor="compress-target-size"
+                className="mc-label"
               >
-                {preset.label}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="space-y-4">
-          <DropZone
-            files={files}
-            onFilesChange={setFiles}
-            accept={IMAGE_ACCEPT}
-            dropLabel="Drag and drop images here"
-            activeDropLabel="Drop your images here"
-            hintLabel="Click to browse — JPG, PNG, WEBP, TIFF, BMP, GIF, HEIC, HEIF."
-          />
-
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm leading-5 text-mut">{summary}</p>
-            <Button onClick={handleConvert} disabled={!canConvert} loading={loading}>
-              {buttonLabel}
-            </Button>
+                Target size
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="compress-target-size"
+                  type="number"
+                  min={1}
+                  step={sizeUnit === 'mb' ? 0.1 : 10}
+                  value={sizeValue}
+                  disabled={loading}
+                  onChange={(event) => {
+                    const next = Number(event.target.value);
+                    if (Number.isFinite(next) && next > 0) {
+                      setSizeValue(next);
+                    }
+                  }}
+                  className={FIELD_CLASSES}
+                />
+                <select
+                  aria-label="Size unit"
+                  value={sizeUnit}
+                  disabled={loading}
+                  onChange={(event) => {
+                    const nextUnit = event.target.value as SizeUnit;
+                    setSizeUnit(nextUnit);
+                    setSizeValue(inputValueForBytes(targetBytes, nextUnit));
+                  }}
+                  className={`${FIELD_CLASSES} w-24 shrink-0`}
+                >
+                  <option value="kb">KB</option>
+                  <option value="mb">MB</option>
+                </select>
+              </div>
+            </div>
           </div>
 
-          {progress && (
-            <ProgressBar
-              value={(progress.completed / progress.total) * 100}
-              label={`Compressing ${progress.completed} of ${progress.total}`}
-            />
-          )}
-
-          {sizeWarning && <Alert tone="warning">{sizeWarning}</Alert>}
-
-          {error && <Alert tone="error">{error}</Alert>}
-
-          {successMessage && <Alert tone="success">{successMessage}</Alert>}
-        </div>
-      </section>
+          <div role="group" aria-labelledby="compress-presets" className="flex flex-wrap items-center gap-2">
+            <span id="compress-presets" className="mr-1 text-xs font-medium text-mut">
+              Presets
+            </span>
+            {SIZE_PRESETS.map((preset) => {
+              const isActive = currentPresetMatch?.label === preset.label;
+              return (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => handlePresetClick(preset.kilobytes)}
+                  aria-pressed={isActive}
+                  disabled={loading}
+                  className={`min-h-8 rounded-full border px-3 text-xs font-medium tabular-nums transition-colors duration-[120ms] ${
+                    isActive
+                      ? 'border-accent bg-accent-soft text-accent-text'
+                      : 'border-line-strong bg-surface text-mut hover:bg-hover hover:text-ink'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              );
+            })}
+          </div>
+        {files.length > 1 && <p className="mt-3 text-xs text-mut">Batch output is saved as a ZIP.</p>}
+      </>
+    }
+      actions={<Button onClick={handleConvert} disabled={!canConvert} loading={loading}>{buttonLabel}</Button>}
+      status={progress && (
+        <ProgressBar value={(progress.completed / progress.total) * 100}
+          label={`Compressing ${progress.completed} of ${progress.total}`} />
+      )}
+    >
+      <DropZone files={files} onFilesChange={setFiles} accept={IMAGE_ACCEPT} disabled={loading}
+        dropLabel="Drag and drop images here" activeDropLabel="Drop your images here"
+        hintLabel="JPG, PNG, WebP, TIFF, BMP, GIF, HEIC, HEIF" />
+      {sizeWarning && <Alert tone="warning">{sizeWarning}</Alert>}
+      {error && <Alert tone="error">{error}</Alert>}
+      {saved && (
+        <Alert tone="success">Saved {outputName(saved.path)}. {saved.detail}. <RevealOutput path={saved.path} /></Alert>
+      )}
     </ToolShell>
   );
 }

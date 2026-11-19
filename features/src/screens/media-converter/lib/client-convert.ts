@@ -1,4 +1,5 @@
 import JSZip from 'jszip';
+import { addZipOutput } from './zip-output';
 import { getMimeType, getInputFormatFromFilename, normalizeOutputFormat, replaceFileExtension } from './formats';
 import {
   browserSupportsWebpEncode,
@@ -104,7 +105,7 @@ export async function convertFilesToZip(
   for (let index = 0; index < files.length; index += 1) {
     const file = files[index];
     const { blob, filename } = await convertSingleFile(file, format);
-    zip.file(filename, blob);
+    addZipOutput(zip, filename, blob);
     onProgress?.(index + 1, files.length);
   }
 

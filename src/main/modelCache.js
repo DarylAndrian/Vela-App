@@ -210,15 +210,10 @@ function ensureReady(level = 1) {
   return promise;
 }
 
-function prefetch() {
-  if (state.baseReady || inflight) return;
-  ensureReady(1);
-}
-
 function registerIpc(options = {}) {
   if (typeof options.notify === 'function') notify = options.notify;
   ipcMain.handle('media:ensure-models', (_e, tier) => ensureReady(tier === 'high' ? 2 : 1));
   ipcMain.handle('media:models-status', () => snapshot());
 }
 
-module.exports = { registerIpc, prefetch, ensureReady, cacheDir };
+module.exports = { registerIpc, ensureReady, cacheDir };

@@ -27,6 +27,7 @@ export interface ConvertRequest {
   jobId: string;
   outputDir: string;
   jobs: MediaJob[];
+  overwrite?: boolean;
 }
 
 export interface JobProgress {
@@ -51,11 +52,11 @@ export interface MediaBridge {
   imageConvert(req: ImageConvertRequest): Promise<{ ok: boolean; dataBase64?: string; error?: string }>;
   imageCompress(req: ImageCompressRequest): Promise<{ ok: boolean; dataBase64?: string; extension?: string; error?: string }>;
   ffmpegProbe(): Promise<{ ok: boolean; version?: string; error?: string }>;
-  convert(req: ConvertRequest): Promise<{ ok: boolean; canceled?: boolean; results?: { outputName: string; ok: boolean; error?: string }[]; error?: string }>;
+  convert(req: ConvertRequest): Promise<{ ok: boolean; canceled?: boolean; results?: { outputName: string; outputPath?: string; ok: boolean; error?: string }[]; error?: string }>;
   cancelJob(jobId: string): Promise<{ ok: boolean }>;
+  reportActivity(mode: 'convert' | 'compress' | 'background', busy: boolean): void;
   pickSave(opts: { defaultName: string; filters?: { name: string; extensions: string[] }[] }): Promise<{ ok: boolean; dir?: string; name?: string; path?: string }>;
   pickFolder(): Promise<{ ok: boolean; dir?: string }>;
-  reveal(path: string): Promise<{ ok: boolean }>;
   ensureModels(tier: 'base' | 'high'): Promise<ModelsStatus>;
   modelsStatus(): Promise<ModelsStatus>;
   onModelsProgress(cb: (status: ModelsStatus) => void): () => void;

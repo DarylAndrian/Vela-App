@@ -5,6 +5,7 @@
    Toasts are queued here and rendered by the ToastStack component.
    ================================================================ */
 import { clamp, dist, defaultQuad, quadCorners, quadArea, quadOutputSize } from './lib/velaCore';
+import type { Page } from './types';
 
 export { clamp, dist, quadCorners, quadArea, quadOutputSize };
 
@@ -48,9 +49,9 @@ export const fmtBytes = (b: number) => {
 /* ---------- state + store ---------- */
 export const lastLayout = { size: 'a4', orientation: 'auto', marginMM: 10, fit: 'fit', align: { x: 0.5, y: 0.5 } };
 
-export const state: any = {
-  pages: [],
-  activeId: null,
+export const state = {
+  pages: [] as Page[],
+  activeId: null as string | null,
   flow: { step: 1 },
   export: { filename: 'vela-scan', quality: 0.85 },
   busy: false,
@@ -60,7 +61,7 @@ export const state: any = {
 const listeners = new Set<(tag: string) => void>();
 export const subscribe = (fn: (tag: string) => void) => {
   listeners.add(fn);
-  return () => listeners.delete(fn);
+  return () => { listeners.delete(fn); };
 };
 export const emit = (tag: string) => {
   state.version++;
@@ -122,5 +123,5 @@ export const toast = pushToast;
 export const subscribeToasts = (fn: (items: ToastItem[]) => void) => {
   toastListeners.add(fn);
   fn(toasts);
-  return () => toastListeners.delete(fn);
+  return () => { toastListeners.delete(fn); };
 };

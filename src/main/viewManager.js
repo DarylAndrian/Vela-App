@@ -1,139 +1,130 @@
-const { WebContentsView, shell, session, app } = require('electron');
+const { WebContentsView, shell } = require('electron');
 const path = require('path');
-const fs = require('fs');
 
-const TOOLBAR_HEIGHT = 70;
-
-let win = null;
-let send = () => {};
-let view = null;
-let currentId = null;
-
-function uniqueDownloadPath(dir, filename) {
-  const safeName = path.basename(filename);
-  let candidate = path.join(dir, safeName);
-  if (!fs.existsSync(candidate)) return candidate;
-  const dot = safeName.lastIndexOf('.');
-  const stem = dot > 0 ? safeName.slice(0, dot) : safeName;
-  const ext = dot > 0 ? safeName.slice(dot) : '';
-  for (let i = 1; i < 1000; i += 1) {
-    candidate = path.join(dir, `${stem} (${i})${ext}`);
-    if (!fs.existsSync(candidate)) return candidate;
-  }
-  return path.join(dir, `${stem}-${Date.now()}${ext}`);
-}
+let win;
+let send;
+let workspace;
+let activeId;
+const views = new Map();
 
 function attach(browserWindow, sender) {
   win = browserWindow;
   send = sender;
-  // Local tools download blobs/ZIPs via anchor clicks; save them straight to
-  // Downloads (no dialog) to match the web app's click-to-download UX.
-  session.defaultSession.on('will-download', (_event, item) => {
-    item.setSavePath(uniqueDownloadPath(app.getPath('downloads'), item.getFilename()));
+  workspace = null;
+  win.webContents.on('before-input-event', focusWorkspace);
+  win.on('close', () => {
+    for (const id of views.keys()) discard(id);
   });
 }
 
 function layout() {
+  const view = getView();
   if (!view || !win || win.isDestroyed()) return;
-  const { width, height } = win.getContentBounds();
-  view.setBounds({ x: 0, y: TOOLBAR_HEIGHT, width, height: Math.max(0, height - TOOLBAR_HEIGHT) });
+  const size = win.getContentBounds();
+  const { x, y } = workspace || { x: 64, y: 52 };
+  view.setBounds({ x, y, width: Math.max(0, size.width - x), height: Math.max(0, size.height - y) });
 }
 
-function closeView() {
-  if (!view) return;
-  try {
-    win.contentView.removeChildView(view);
-    view.webContents.close();
-  } catch {}
-  view = null;
-  currentId = null;
-}
-
-function fail(message) {
-  const id = currentId;
-  closeView();
-  send('service:state', { type: 'failed', id, message });
-}
-
-function open(id, url, useVelaSession) {
-  closeView();
-  currentId = id;
-  view = new WebContentsView({
-    webPreferences: {
-      sandbox: true,
-      contextIsolation: true,
-      ...(useVelaSession ? { partition: 'persist:vela' } : {}),
-    },
-  });
-  win.contentView.addChildView(view);
+function setWorkspace(bounds) {
+  if (!Number.isInteger(bounds?.x) || !Number.isInteger(bounds?.y) || bounds.x < 0 || bounds.y < 0) return;
+  workspace = bounds;
   layout();
+}
 
-  const wc = view.webContents;
-  wc.setWindowOpenHandler(({ url: target }) => {
-    shell.openExternal(target);
-    return { action: 'deny' };
-  });
-  wc.on('did-start-loading', () => send('service:state', { type: 'loading', id }));
-  wc.on('did-finish-load', () => send('service:state', { type: 'loaded', id }));
-  wc.on('did-fail-load', (_e, errorCode, errorDescription, _url, isMainFrame) => {
-    if (errorCode === -3 || !isMainFrame) return;
-    fail(`Couldn't load the page (${errorDescription}).`);
-  });
-  wc.on('render-process-gone', () => fail('The page crashed.'));
+function focusWorkspace(event, input) {
+  if (input.type !== 'keyDown' || input.key !== 'F6' || !getView()) return;
+  event.preventDefault();
+  getView().webContents.focus();
+}
 
-  send('service:state', { type: 'opened', id, url });
-  wc.loadURL(url);
+function discard(id) {
+  const entry = views.get(id);
+  if (!entry) return;
+  views.delete(id);
+  if (activeId === id) activeId = null;
+  win.contentView.removeChildView(entry.view);
+  if (!entry.view.webContents.isDestroyed()) entry.view.webContents.close();
+}
+
+function deactivate() {
+  const previous = activeId;
+  getView()?.setVisible(false);
+  activeId = null;
+  if (previous === 'connect') discard(previous);
 }
 
 function openLocal(id, url) {
-  closeView();
-  currentId = id;
-  view = new WebContentsView({
-    webPreferences: {
-      sandbox: true,
-      contextIsolation: true,
-      preload: path.join(__dirname, '..', 'preload', 'preload.js'),
-    },
-  });
-  win.contentView.addChildView(view);
+  if (id !== activeId) deactivate();
+  activeId = id;
+  let entry = views.get(id);
+  send('service:state', { type: 'opened', id, loading: !entry?.ready });
+
+  if (!entry) {
+    const view = new WebContentsView({
+      webPreferences: {
+        sandbox: true,
+        contextIsolation: true,
+        preload: path.join(__dirname, '..', 'preload', 'preload.js'),
+      },
+    });
+    entry = { view, ready: false };
+    views.set(id, entry);
+    view.setVisible(false);
+    win.contentView.addChildView(view);
+    const wc = view.webContents;
+    wc.on('will-navigate', (event, target) => {
+      if ((event.url || target)?.split('#')[0] !== url.split('#')[0]) event.preventDefault();
+    });
+    wc.setWindowOpenHandler(({ url: target }) => {
+      if (/^https?:\/\//i.test(target)) void shell.openExternal(target);
+      return { action: 'deny' };
+    });
+    wc.on('before-input-event', (event, input) => {
+      if (input.type !== 'keyDown' || input.key !== 'F6' || activeId !== id) return;
+      event.preventDefault();
+      win.webContents.focus();
+      send('service:state', { type: 'focus-navigation' });
+    });
+    wc.once('did-finish-load', () => {
+      entry.ready = true;
+      if (activeId !== id) return;
+      view.setVisible(true);
+      send('service:state', { type: 'loaded', id });
+    });
+    const fail = (message) => {
+      if (views.get(id) !== entry) return;
+      const visible = activeId === id;
+      discard(id);
+      if (visible) send('service:state', { type: 'failed', id, message });
+    };
+    wc.on('did-fail-load', (_event, code, description, _url, mainFrame) => {
+      if (code !== -3 && mainFrame) fail(`Couldn't open this workspace (${description}).`);
+    });
+    wc.on('render-process-gone', () => fail('This workspace closed unexpectedly.'));
+    void wc.loadURL(url).catch((error) => fail(error.message));
+  }
+
   layout();
-
-  const wc = view.webContents;
-  wc.setWindowOpenHandler(({ url: target }) => {
-    shell.openExternal(target);
-    return { action: 'deny' };
-  });
-  wc.on('did-start-loading', () => send('service:state', { type: 'loading', id }));
-  wc.on('did-finish-load', () => send('service:state', { type: 'loaded', id }));
-  wc.on('did-fail-load', (_e, errorCode, errorDescription, _url, isMainFrame) => {
-    if (errorCode === -3 || !isMainFrame) return;
-    fail(`Couldn't load the page (${errorDescription}).`);
-  });
-  wc.on('render-process-gone', () => fail('The page crashed.'));
-
-  send('service:state', { type: 'opened', id, url: 'native' });
-  wc.loadURL(url);
+  entry.view.setVisible(entry.ready);
 }
 
-function navBack() {
-  if (!view) return;
-  const wc = view.webContents;
-  if (wc.canGoBack()) wc.goBack();
-  else goHome();
-}
-
-function goHome() {
-  const wasOpen = !!view;
-  closeView();
-  if (wasOpen) send('service:state', { type: 'home' });
-}
-
-function isOpen() {
-  return !!view;
+function showShell(destination = 'home') {
+  deactivate();
+  send('service:state', { type: 'shell', destination });
 }
 
 function getView() {
-  return view;
+  return views.get(activeId)?.view || null;
 }
 
-module.exports = { TOOLBAR_HEIGHT, attach, layout, open, openLocal, navBack, goHome, closeView, isOpen, getView };
+function notifyViews(channel, payload) {
+  for (const { view } of views.values()) {
+    if (!view.webContents.isDestroyed()) view.webContents.send(channel, payload);
+  }
+}
+
+function getViewId() {
+  return activeId;
+}
+
+module.exports = { attach, layout, setWorkspace, openLocal, showShell, discard, getView, getViewId, notifyViews };

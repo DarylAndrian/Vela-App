@@ -1,7 +1,8 @@
 const { ipcMain, dialog, shell, clipboard, nativeImage, app } = require('electron');
 const fs = require('fs');
+const path = require('path');
+const { randomUUID } = require('crypto');
 const config = require('../config');
-const viewManager = require('../viewManager');
 const { SafeTokenStore } = require('./tokenStore');
 const { VelaConnector, AuthExpiredError, VelaApiError } = require('./connector');
 const { ChartCodesApi } = require('./chartCodes');
@@ -9,13 +10,17 @@ const { ChartCodesApi } = require('./chartCodes');
 let connector = null;
 let chartsApi = null;
 let notify = () => {};
+let onAccountChanged = () => {};
 
 function getConnector() {
   if (!connector) {
     connector = new VelaConnector({
       baseUrl: config.load().velaBaseUrl,
       store: new SafeTokenStore(),
-      onAuthExpired: () => notify('vela:auth-expired'),
+      onAuthExpired: () => {
+        notify('vela:auth-expired');
+        onAccountChanged(false);
+      },
     });
     chartsApi = new ChartCodesApi(connector);
   }
@@ -39,14 +44,16 @@ async function status() {
   }
 }
 
-function registerIpc({ notify: notifyFn }) {
+function registerIpc({ notify: notifyFn, getWindow, accountChanged }) {
   notify = notifyFn;
+  onAccountChanged = accountChanged;
 
   ipcMain.handle('vela:status', () => status());
 
   ipcMain.handle('vela:connect', async (_e, token) => {
     try {
       const identity = await getConnector().connect(token);
+      onAccountChanged(true);
       return { connected: true, identity, daysRemaining: await connector.daysRemaining(), baseUrl: connector.baseUrl };
     } catch (err) {
       return { connected: false, identity: null, daysRemaining: null, baseUrl: getConnector().baseUrl, error: err.message };
@@ -55,6 +62,7 @@ function registerIpc({ notify: notifyFn }) {
 
   ipcMain.handle('vela:disconnect', async () => {
     await getConnector().disconnect();
+    onAccountChanged(false);
   });
 
   ipcMain.handle('vela:open-site', () => shell.openExternal(config.load().velaBaseUrl));
@@ -79,16 +87,29 @@ function registerIpc({ notify: notifyFn }) {
   ipcMain.handle('products:list', wrap(() => chartsApiAfter().listProducts()));
 
   ipcMain.handle('files:save', async (_e, { defaultName, filters, dataBase64 }) => {
-    const win = viewManager.getView() || undefined;
-    const result = await dialog.showSaveDialog(win, { defaultPath: defaultName, filters });
+    const result = await dialog.showSaveDialog(getWindow(), { defaultPath: defaultName, filters });
     if (result.canceled || !result.filePath) return null;
-    fs.writeFileSync(result.filePath, Buffer.from(dataBase64, 'base64'));
+    const temp = path.join(path.dirname(result.filePath), `.vela-${randomUUID()}.tmp`);
+    try {
+      await fs.promises.writeFile(temp, Buffer.from(dataBase64, 'base64'), { flag: 'wx' });
+      await fs.promises.rename(temp, result.filePath);
+    } finally {
+      await fs.promises.rm(temp, { force: true }).catch(() => {});
+    }
     return result.filePath;
   });
 
+  ipcMain.handle('files:reveal', async (_e, target) => {
+    if (typeof target !== 'string' || !path.isAbsolute(target)) return { ok: false };
+    const info = await fs.promises.stat(target).catch(() => null);
+    if (!info) return { ok: false };
+    if (info.isDirectory()) return { ok: (await shell.openPath(target)) === '' };
+    shell.showItemInFolder(target);
+    return { ok: true };
+  });
+
   ipcMain.handle('files:open-images', async () => {
-    const win = viewManager.getView() || undefined;
-    const result = await dialog.showOpenDialog(win, {
+    const result = await dialog.showOpenDialog(getWindow(), {
       title: 'Select images',
       properties: ['openFile', 'multiSelections'],
       filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }],

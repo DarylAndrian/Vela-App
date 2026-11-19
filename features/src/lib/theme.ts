@@ -1,23 +1,29 @@
-/** Applies the launcher theme (from config) to this page; listens for runtime changes. */
+/** Applies Vela's saved appearance to both visible and retained workspaces. */
 export async function initTheme(): Promise<void> {
   const launcher = (window as any).launcher;
-  const resolve = (choice?: string) => {
-    if (choice === 'system' || !choice) {
-      return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-    }
-    return choice;
+  const system = window.matchMedia('(prefers-color-scheme: light)');
+  let choice = 'system';
+
+  const applyTheme = () => {
+    const theme = choice === 'system' ? (system.matches ? 'light' : 'dark') : choice;
+    if (document.documentElement.dataset.theme === theme) return;
+    document.documentElement.dataset.theme = theme;
+    window.dispatchEvent(new Event('vela-theme'));
   };
-  if (launcher?.getConfig) {
-    try {
-      const cfg = await launcher.getConfig();
-      document.documentElement.dataset.theme = resolve(cfg.theme);
-    } catch { /* default stays */ }
-  }
-  if (launcher?.onEvent) {
-    launcher.onEvent((ev: { type?: string; theme?: string }) => {
-      if (ev.type === 'theme:changed' && ev.theme) {
-        document.documentElement.dataset.theme = resolve(ev.theme);
-      }
-    });
+  system.addEventListener('change', applyTheme);
+  let receivedUpdate = false;
+  launcher?.onEvent?.((event: { type?: string; theme?: string }) => {
+    if (event.type !== 'theme:changed') return;
+    receivedUpdate = true;
+    choice = event.theme || 'system';
+    applyTheme();
+  });
+  try {
+    const cfg = await launcher?.getConfig?.();
+    if (!receivedUpdate) choice = cfg?.theme || 'system';
+  } catch {
+    // Use the system theme when settings are unavailable.
+  } finally {
+    applyTheme();
   }
 }

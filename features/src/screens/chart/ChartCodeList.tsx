@@ -31,7 +31,7 @@ export function ChartCodeList({ charts, products, loading, creating, deleting, o
         <div style={{ flex: 1, position: 'relative' }}>
           <svg viewBox="0 0 24 24" style={{ width: 15, height: 15, fill: 'none', stroke: 'var(--text-3)', strokeWidth: 1.8, position: 'absolute', left: 12, top: 11 }}><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
           <input
-            placeholder="Search charts…"
+            aria-label="Search charts" placeholder="Search charts…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ width: '100%', height: 38, borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', padding: '0 12px 0 35px', fontSize: 12, fontFamily: 'var(--font)' }}
@@ -80,48 +80,32 @@ export function ChartCodeList({ charts, products, loading, creating, deleting, o
           )}
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 15 }}>
-          {filtered.map((c) => {
-            const product = products.find((p) => p.id === c.product_id) ?? products.find((p) => p.name === c.product_name);
-            const productName = product?.name ?? c.product_name;
+        <ul className="chart-library card-panel" aria-label="Chart library">
+          {filtered.map((chart) => {
+            const product = products.find((item) => item.id === chart.product_id) ??
+              products.find((item) => item.name === chart.product_name);
+            const productName = product?.name ?? chart.product_name;
             return (
-            <div key={c.id} className="card"
-              style={{ '--cat': product?.color || 'var(--accent)', aspectRatio: '1 / 1', display: 'flex', flexDirection: 'column', minWidth: 0 } as React.CSSProperties}
-              onClick={() => onOpen(c)}>
-              <div style={{
-                flex: 1, minHeight: 0, position: 'relative', borderRadius: 'var(--radius-md)', marginBottom: 12, overflow: 'hidden',
-                background: 'linear-gradient(135deg, var(--surface-2), color-mix(in srgb, var(--accent) 14%, transparent))',
-                border: '1px solid var(--border)',
-              }}>
-                <ChartThumb cacheKey={`${c.id}:${c.updated_at}`} source={c.mmd_code} />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                <h2 style={{ margin: 0, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</h2>
-                {c.protected ? (
-                  <span className="badge gray" style={{ fontSize: 12, padding: '3px 8px' }}>Protected</span>
-                ) : (
-                  <svg viewBox="0 0 24 24"
-                    style={{ width: 15, height: 15, fill: 'none', stroke: 'var(--text-3)', strokeWidth: 1.7, cursor: 'pointer', flex: 'none' }}
-                    onClick={(e) => { e.stopPropagation(); if (!deleting) setConfirm(c); }}
-                  ><title>Delete</title><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>
+              <li className="chart-row" key={chart.id}>
+                <button className="chart-open" type="button" onClick={() => onOpen(chart)}>
+                  <div className="chart-preview" aria-hidden="true">
+                    <ChartThumb cacheKey={`${chart.id}:${chart.updated_at}`} source={chart.mmd_code} />
+                  </div>
+                  <span className="chart-details">
+                    <strong>{chart.title}</strong>
+                    <span>{[productName, new Date(chart.updated_at).toLocaleDateString()].filter(Boolean).join(' · ')}</span>
+                  </span>
+                </button>
+                {chart.protected ? <span className="badge gray">Protected</span> : (
+                  <button className="icon-btn" type="button" disabled={deleting}
+                    title="Delete chart" aria-label={`Delete ${chart.title}`} onClick={() => setConfirm(chart)}>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>
+                  </button>
                 )}
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 5, display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
-                {productName && (
-                  <span style={{
-                    flex: 'none', maxWidth: '55%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    padding: '2px 7px', borderRadius: 999, fontWeight: 600, color: 'var(--cat)',
-                    background: 'color-mix(in srgb, var(--cat) 14%, transparent)',
-                  }}>{productName}</span>
-                )}
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {new Date(c.updated_at).toLocaleString()}
-                </span>
-              </div>
-            </div>
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
 
       {confirm && (

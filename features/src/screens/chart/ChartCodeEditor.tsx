@@ -1,3 +1,4 @@
+import { RevealOutput } from '../../components/RevealOutput';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { organizeMermaid } from '../../lib/mermaidOrganizer';
 import { serializeNodeStyle, type NodeStyle } from '../../lib/chartCodeStyles';
@@ -23,6 +24,7 @@ export function ChartCodeEditor({ chart, products, saving, onSave, onBack, isDar
   const [renderKey, setRenderKey] = useState(0);
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savedPath, setSavedPath] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [showExport, setShowExport] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -107,7 +109,7 @@ export function ChartCodeEditor({ chart, products, saving, onSave, onBack, isDar
       const saved = format === 'svg'
         ? await exportSvg(isDark, title, chart.id)
         : await exportRaster(format, isDark, title, chart.id);
-      say(`Saved to ${saved}`);
+      setSavedPath(saved);
     } catch (e) {
       if (e instanceof Error && e.message === 'SAVE_CANCELLED') return;
       setError(e instanceof Error ? e.message : String(e));
@@ -132,10 +134,12 @@ export function ChartCodeEditor({ chart, products, saving, onSave, onBack, isDar
   return (
     <div>
       <div className="card-panel" style={{ padding: '13px 16px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 11, marginBottom: 13 }}>
-        <button className="icon-btn" title="Back to list" style={{ width: 34, height: 34 }} onClick={onBack}>
-          <svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
+        <button className="btn" type="button" onClick={onBack}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
+          Back to library
         </button>
         <input
+          aria-label="Chart title"
           value={title}
           onChange={(e) => { setTitle(e.target.value); setDirty(true); }}
           style={{
@@ -183,14 +187,14 @@ export function ChartCodeEditor({ chart, products, saving, onSave, onBack, isDar
           {showExport && !exporting && (
             <div className="card-panel" style={{ position: 'absolute', right: 0, top: 42, zIndex: 30, padding: 6, width: 130 }}>
               {(['png', 'jpeg', 'svg'] as const).map((f) => (
-                <div key={f}
+                <button key={f} type="button" className="chart-format"
                   onClick={() => void doExport(f)}
                   style={{ padding: '8px 12px', borderRadius: 'var(--radius-sm)', fontSize: 12, fontWeight: 600, color: 'var(--text-2)', cursor: 'pointer' }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                 >
                   {f === 'jpeg' ? 'JPEG' : f.toUpperCase()}
-                </div>
+                </button>
               ))}
             </div>
           )}
@@ -203,6 +207,10 @@ export function ChartCodeEditor({ chart, products, saving, onSave, onBack, isDar
         </button>
       </div>
 
+      {savedPath && <p className="workspace-result chart-export-result" role="status">
+        Chart saved. <RevealOutput path={savedPath} />
+      </p>}
+
       {error && (
         <div style={{
           padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 12, fontSize: 12,
@@ -211,7 +219,7 @@ export function ChartCodeEditor({ chart, products, saving, onSave, onBack, isDar
         }}>{error}</div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 420px) 1fr', gap: 13, height: 'calc(100vh - 250px)', minHeight: 480 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(285px, 42%) minmax(0, 1fr)', gap: 13, height: 'calc(100vh - 250px)', minHeight: 360 }}>
         <div className="card-panel" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div style={{ padding: '9px 15px', borderBottom: '1px solid var(--border)', fontSize: 12, fontWeight: 700, letterSpacing: '.7px', color: 'var(--text-3)', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             Mermaid source
@@ -225,6 +233,7 @@ export function ChartCodeEditor({ chart, products, saving, onSave, onBack, isDar
               {Array.from({ length: gutterLines }, (_, i) => <div key={i}>{i + 1}</div>)}
             </div>
             <textarea
+              aria-label="Mermaid source"
               spellCheck={false}
               value={code}
               onChange={(e) => { setCode(e.target.value); setDirty(true); }}

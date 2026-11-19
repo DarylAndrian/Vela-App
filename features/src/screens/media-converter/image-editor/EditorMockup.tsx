@@ -28,7 +28,9 @@ import {
   type TextStyleId,
 } from './editor-tools';
 import { canvasToBlob } from '../lib/browser-image';
-import { downloadBlob } from '../lib/download';
+import { outputName, saveOutput } from '../lib/save-output';
+import { RevealOutput } from '../../../components/RevealOutput';
+import { Alert } from '../components/Alert';
 import { Button } from '../components/Button';
 
 interface EditorMockupProps {
@@ -232,7 +234,9 @@ export function EditorMockup({
     top: number;
     value: string;
   } | null>(null);
-  const [downloading, setDownloading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [savedPath, setSavedPath] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [history, dispatch] = useReducer(historyReducer, { ops: [], future: [] });
   const [cssScale, setCssScale] = useState(1);
 
@@ -246,7 +250,9 @@ export function EditorMockup({
       setImage(img);
       setCanvasSize(fitCanvasSize(img.naturalWidth, img.naturalHeight));
     };
+    img.onerror = () => setError('Could not open the image.');
     img.src = previewUrl;
+    return () => { img.onload = null; img.onerror = null; };
   }, [previewUrl]);
 
   useEffect(() => {
@@ -288,25 +294,29 @@ export function EditorMockup({
     [textColor, textSize, textStyle],
   );
 
-  const handleDownload = async () => {
+  const handleSave = async () => {
     const canvas = canvasRef.current;
     if (!canvas || !file) {
       return;
     }
 
-    setDownloading(true);
+    setSaving(true);
+    setError(null);
     try {
       const blob = await canvasToBlob(canvas, 'image/png');
       const stem = file.name.replace(/\.[^.]+$/, '') || 'image';
-      downloadBlob(blob, `${stem}-edited.png`);
+      const path = await saveOutput(blob, `${stem}-edited.png`);
+      if (path) setSavedPath(path);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save the image.');
     } finally {
-      setDownloading(false);
+      setSaving(false);
     }
   };
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.target instanceof HTMLInputElement) {
+      if (!canvasRef.current || canvasRef.current.closest('[hidden]') || event.target instanceof HTMLInputElement) {
         return;
       }
 
@@ -333,17 +343,30 @@ export function EditorMockup({
   const canUndo = history.ops.length > 0;
   const canRedo = history.future.length > 0;
 
+  if (!file) {
+    return (
+      <DropZone files={[]} onFilesChange={onFilesChange} multiple={false}
+        accept={{
+          'image/jpeg': ['.jpg', '.jpeg'],
+          'image/png': ['.png'],
+          'image/webp': ['.webp'],
+          'image/gif': ['.gif'],
+          'image/bmp': ['.bmp'],
+        }}
+        dropLabel="Drag and drop a photo here" activeDropLabel="Drop to start editing"
+        hintLabel="JPG, PNG, WebP, GIF, BMP" />
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-ink">
-            {file ? file.name : 'No image selected'}
+            {file.name}
           </p>
           <p className="text-xs font-medium tabular-nums text-mut">
-            {file
-              ? formatFileSize(file.size)
-              : 'Add a photo, then annotate it right here.'}
+            {formatFileSize(file.size)}
           </p>
         </div>
 
@@ -364,21 +387,23 @@ export function EditorMockup({
           >
             Redo
           </Button>
-          <Button size="sm" disabled={!canEdit || downloading} onClick={handleDownload}>
-            {downloading ? 'Downloading...' : 'Download'}
+          <Button size="sm" disabled={!canEdit || saving} onClick={handleSave}>
+            {saving ? 'Saving…' : 'Save PNG…'}
           </Button>
           {file && (
-            <Button variant="ghost" size="sm" onClick={onClear}>
+            <Button variant="ghost" size="sm" onClick={onClear} disabled={saving}>
               Clear
             </Button>
           )}
         </div>
       </div>
 
+      {error && <Alert tone="error">{error}</Alert>}
+      {savedPath && <Alert tone="success">Saved {outputName(savedPath)}. <RevealOutput path={savedPath} /></Alert>}
       <p className="text-xs font-medium text-mut">{TOOL_HINTS[tool]}</p>
 
       <div
-        className={`relative flex min-h-[360px] items-center justify-center overflow-hidden rounded-2xl border border-line sm:min-h-[440px] ${
+        className={`relative flex h-[clamp(240px,52vh,440px)] items-center justify-center overflow-hidden rounded-lg border border-line ${
           previewUrl ? 'bg-[#18181B]' : 'bg-base'
         }`}
       >
@@ -448,24 +473,7 @@ export function EditorMockup({
               />
             )}
           </div>
-        ) : (
-          <div className="w-full p-4 sm:p-6">
-            <DropZone
-              files={[]}
-              onFilesChange={onFilesChange}
-              accept={{
-                'image/jpeg': ['.jpg', '.jpeg'],
-                'image/png': ['.png'],
-                'image/webp': ['.webp'],
-                'image/gif': ['.gif'],
-                'image/bmp': ['.bmp'],
-              }}
-              dropLabel="Drag and drop a photo here"
-              activeDropLabel="Drop to start editing"
-              hintLabel="or click to browse. JPG, PNG, WebP, GIF, and BMP."
-            />
-          </div>
-        )}
+        ) : null}
       </div>
 
       <div className="mc-panel px-4 py-3">

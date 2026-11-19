@@ -8,6 +8,7 @@ import { renderPageEl, wirePageDrag } from '../lib/pageRender';
 import { generateSamples } from '../samples';
 import { autoDetect, rotateActive, resetCrop } from './stages';
 import { Icon } from './icons';
+import type { Page } from '../types';
 
 const signed = (v: number) => (v > 0 ? '+' + v : '' + v);
 const fill = (v: number, min: number, max: number) => ({ ['--fill' as any]: ((v - min) / (max - min)) * 100 + '%' });
@@ -57,7 +58,7 @@ export function CropPanel() {
   );
 }
 
-function cropSizeText(page) {
+function cropSizeText(page: Page) {
   const rot = getRotated(page);
   const s = quadOutputSize(page.quad, rot.width, rot.height);
   return `${s.w} × ${s.h}`;
@@ -207,7 +208,7 @@ export function LayoutPanel() {
   );
 }
 
-export function ExportPanel({ version, pageMiniRef }: { version: number; pageMiniRef: React.RefObject<HTMLDivElement> }) {
+export function ExportPanel({ version, pageMiniRef }: { version: number; pageMiniRef: React.RefObject<HTMLDivElement | null> }) {
   const page = active();
   const quality = state.export.quality;
   const [est, setEst] = useState('≈ 0 MB');
@@ -239,7 +240,7 @@ export function ExportPanel({ version, pageMiniRef }: { version: number; pageMin
   if (page) {
     const pv = getPreview(page);
     const { wmm, hmm, portrait } = pageDims(page, pv.width, pv.height);
-    const label = SIZES[page.layout.size]?.label || 'MATCH';
+    const label = SIZES[page.layout.size as keyof typeof SIZES]?.label || 'MATCH';
     const maxSide = quality >= 0.9 ? 3200 : 2500;
     const d = Math.round(maxSide / (Math.max(wmm, hmm) / 25.4));
     format = `${label} · ${portrait ? 'PORTRAIT' : 'LANDSCAPE'}`;

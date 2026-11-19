@@ -1,13 +1,20 @@
-const { app, dialog, shell, ipcMain } = require('electron');
+const { app, dialog, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
+const { randomUUID } = require('crypto');
 
 // Native ffmpeg engine. Video/audio jobs reference real file paths and write
 // straight to a user-chosen folder, so large media never crosses IPC as bytes.
 
 let ffmpegPath = null;
 const activeJobs = new Map();
+const rendererJobs = new Map();
+
+function reportActivity(notify) {
+  const localCount = Array.from(rendererJobs.values()).reduce((total, modes) => total + modes.size, 0);
+  notify('service:state', { type: 'media-activity', count: activeJobs.size + localCount });
+}
 
 const AUDIO_CODECS = {
   mp3: 'libmp3lame',
@@ -114,41 +121,76 @@ function runFfmpeg(args, jobId, index, total, name, state, notify) {
   });
 }
 
-async function runJob(job, outputDir, jobId, index, total, state, notify) {
+async function publishOutput(temp, outputDir, requestedName, overwrite) {
+  if (overwrite) {
+    const target = path.join(outputDir, requestedName);
+    await fs.promises.rename(temp, target);
+    return target;
+  }
+  const { name, ext } = path.parse(requestedName);
+  for (let suffix = 0; ; suffix += 1) {
+    const target = path.join(outputDir, suffix ? `${name} (${suffix})${ext}` : requestedName);
+    try {
+      try {
+        await fs.promises.link(temp, target);
+      } catch (error) {
+        if (!['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'EXDEV', 'ENOSYS'].includes(error.code)) throw error;
+        await fs.promises.copyFile(temp, target, fs.constants.COPYFILE_EXCL);
+      }
+      return target;
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+    }
+  }
+}
+
+async function runJob(job, outputDir, jobId, index, total, state, notify, overwrite) {
   const inputPath = job.inputPath;
-  const outputPath = path.join(outputDir, job.outputName);
+  if (typeof job.outputName !== 'string' || !job.outputName || path.basename(job.outputName) !== job.outputName) {
+    throw new Error('Invalid output name.');
+  }
+  const target = path.resolve(outputDir, job.outputName);
+  if (overwrite && path.resolve(inputPath).toLowerCase() === target.toLowerCase()) {
+    throw new Error('Choose a different destination from the source file.');
+  }
+  const temp = path.join(outputDir, `.vela-${randomUUID()}${path.extname(job.outputName)}`);
   notify('media:job-progress', { jobId, index, total, ratio: -1, name: job.outputName });
   if (!fs.existsSync(inputPath)) throw new Error(`Input file not found: ${path.basename(inputPath)}`);
 
-  const attempt = (mode) => runFfmpeg(buildArgs(job, inputPath, outputPath, mode), jobId, index, total, job.outputName, state, notify);
-
-  if (job.kind === 'video' && job.mode === 'remux') {
-    try {
-      await attempt('remux');
-      return;
-    } catch (err) {
-      if (state.canceled) throw err;
-      // Stream copy failed (codec not supported by the container) -> re-encode.
-      fs.rmSync(outputPath, { force: true });
-      await attempt('reencode');
-      return;
+  const attempt = (mode) => runFfmpeg(buildArgs(job, inputPath, temp, mode), jobId, index, total, job.outputName, state, notify);
+  try {
+    if (job.kind === 'video' && job.mode === 'remux') {
+      try {
+        await attempt('remux');
+      } catch (err) {
+        if (state.canceled) throw err;
+        await attempt('reencode');
+      }
+    } else {
+      await attempt(job.kind === 'audio' ? 'extract' : job.mode);
     }
+    if (state.canceled) throw new Error('Canceled');
+    return await publishOutput(temp, outputDir, job.outputName, overwrite);
+  } finally {
+    await fs.promises.rm(temp, { force: true }).catch(() => {});
   }
-
-  await attempt(job.kind === 'audio' ? 'extract' : job.mode);
 }
 
-async function convert(req, notify) {
-  const { jobId, outputDir, jobs } = req || {};
+async function convert(req, notify, sender) {
+  const { jobId, outputDir, jobs, overwrite } = req || {};
   if (!jobId || !outputDir || !Array.isArray(jobs) || jobs.length === 0) {
     return { ok: false, error: 'Invalid conversion request.' };
   }
+  if (activeJobs.has(jobId)) return { ok: false, error: 'This job is already running.' };
   if (!ffmpegAvailable()) {
     return { ok: false, error: 'The ffmpeg binary could not be found.' };
   }
 
   const state = { canceled: false, procs: new Set() };
   activeJobs.set(jobId, state);
+  const onDestroyed = () => cancelJob(jobId);
+  sender.once('destroyed', onDestroyed);
+  reportActivity(notify);
   const results = [];
   try {
     fs.mkdirSync(outputDir, { recursive: true });
@@ -159,10 +201,9 @@ async function convert(req, notify) {
         continue;
       }
       try {
-        await runJob(job, outputDir, jobId, i, jobs.length, state, notify);
-        results.push({ outputName: job.outputName, ok: true });
+        const outputPath = await runJob(job, outputDir, jobId, i, jobs.length, state, notify, overwrite === true && jobs.length === 1);
+        results.push({ outputName: path.basename(outputPath), outputPath, ok: true });
       } catch (err) {
-        fs.rmSync(path.join(outputDir, job.outputName), { force: true });
         results.push({ outputName: job.outputName, ok: false, error: err.message });
         if (state.canceled) {
           for (let j = i + 1; j < jobs.length; j += 1) {
@@ -174,7 +215,9 @@ async function convert(req, notify) {
     }
     return { ok: results.every((r) => r.ok), results, canceled: state.canceled };
   } finally {
+    sender.removeListener('destroyed', onDestroyed);
     activeJobs.delete(jobId);
+    reportActivity(notify);
   }
 }
 
@@ -222,18 +265,29 @@ async function pickFolder(getWindow) {
   return { ok: true, dir: result.filePaths[0] };
 }
 
-function reveal(target) {
-  if (target) shell.showItemInFolder(target);
-  return { ok: true };
-}
-
 function registerIpc({ notify, getWindow }) {
+  ipcMain.on('media:activity', ({ sender }, mode, busy) => {
+    if (!['convert', 'compress', 'background'].includes(mode) || typeof busy !== 'boolean') return;
+    let modes = rendererJobs.get(sender.id);
+    if (!modes) {
+      if (!busy) return;
+      modes = new Set();
+      const id = sender.id;
+      rendererJobs.set(id, modes);
+      sender.once('destroyed', () => {
+        rendererJobs.delete(id);
+        reportActivity(notify);
+      });
+    }
+    if (busy) modes.add(mode);
+    else modes.delete(mode);
+    reportActivity(notify);
+  });
   ipcMain.handle('media:ffmpeg-probe', () => ffmpegProbe());
-  ipcMain.handle('media:convert', (_e, req) => convert(req, notify));
+  ipcMain.handle('media:convert', (event, req) => convert(req, notify, event.sender));
   ipcMain.handle('media:cancel-job', (_e, jobId) => cancelJob(jobId));
   ipcMain.handle('media:pick-save', (_e, opts) => pickSave(opts, getWindow));
   ipcMain.handle('media:pick-folder', () => pickFolder(getWindow));
-  ipcMain.handle('media:reveal', (_e, target) => reveal(target));
 }
 
 module.exports = { registerIpc, ffmpegProbe, ffmpegAvailable, resolveFfmpeg };

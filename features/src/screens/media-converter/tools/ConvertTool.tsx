@@ -1,13 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Alert } from '../components/Alert';
 import { Button } from '../components/Button';
 import { DropZone } from '../components/DropZone';
 import { ProgressBar } from '../components/ProgressBar';
 import { ToolShell } from '../components/ToolShell';
 import { convertFilesToZip, convertSingleFile } from '../lib/client-convert';
-import { downloadBlob } from '../lib/download';
+import { outputName, saveOutput } from '../lib/save-output';
+import { RevealOutput } from '../../../components/RevealOutput';
 import { OUTPUT_FORMATS } from '../lib/formats';
 import { IMAGE_ACCEPT } from '../lib/media-accept';
+import { useMediaActivity } from '../lib/use-media-activity';
 
 const FORMAT_OPTIONS = OUTPUT_FORMATS.map((format) => ({
   value: format,
@@ -22,21 +24,10 @@ export function ConvertTool() {
     null,
   );
   const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [savedPath, setSavedPath] = useState<string | null>(null);
 
   const canConvert = files.length > 0 && !loading;
-
-  const summary = useMemo(() => {
-    if (files.length === 0) {
-      return 'Add one or more images to get started. Conversion runs on your computer.';
-    }
-
-    if (files.length === 1) {
-      return `Ready to convert ${files[0].name} to ${format.toUpperCase()}.`;
-    }
-
-    return `Ready to convert ${files.length} images to ${format.toUpperCase()} and download as a ZIP file. Each image is converted individually for reliable batch uploads.`;
-  }, [files, format]);
+  useMediaActivity('convert', loading);
 
   const handleConvert = async () => {
     if (!canConvert) {
@@ -46,21 +37,18 @@ export function ConvertTool() {
     setLoading(true);
     setProgress(null);
     setError(null);
-    setSuccessMessage(null);
+    setSavedPath(null);
 
     try {
       if (files.length === 1) {
         const { blob, filename } = await convertSingleFile(files[0], format);
-        downloadBlob(blob, filename);
-        setSuccessMessage(`Downloaded ${filename}.`);
+        setSavedPath(await saveOutput(blob, filename));
       } else {
         setProgress({ completed: 0, total: files.length });
         const zipBlob = await convertFilesToZip(files, format, (completed, total) => {
           setProgress({ completed, total });
         });
-        const filename = 'converted-images.zip';
-        downloadBlob(zipBlob, filename);
-        setSuccessMessage(`Downloaded ${filename} with ${files.length} converted images.`);
+        setSavedPath(await saveOutput(zipBlob, 'converted-images.zip'));
       }
     } catch (convertError) {
       setError(
@@ -76,82 +64,33 @@ export function ConvertTool() {
 
   return (
     <ToolShell
-      eyebrow="Image Converter"
-      title="Convert images to*any common format*"
-      description="Add a single image or a batch, choose your output format, and download instantly. JPG, PNG, and WebP run right in the window — GIF, TIFF, and HEIC/HEIF use the built-in local engine."
-      features={[
-        {
-          title: 'Single or batch',
-          body: 'Convert one image or add many files and receive a ZIP archive.',
-        },
-        {
-          title: 'HEIC friendly',
-          body: 'Import iPhone HEIC/HEIF photos and export them as JPG, PNG, WEBP, and more.',
-        },
-        {
-          title: 'Fully local',
-          body: 'Every conversion happens on your computer and never leaves your device.',
-        },
-      ]}
+      settings={
+        <>
+          <label htmlFor="output-format" className="mc-label">Output format</label>
+          <select id="output-format" value={format} disabled={loading}
+            onChange={(event) => setFormat(event.target.value)} className="mc-input">
+            {FORMAT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+          {files.length > 1 && <p className="mt-3 text-xs text-mut">Batch output is saved as a ZIP.</p>}
+        </>
+      }
+      actions={
+        <Button onClick={handleConvert} disabled={!canConvert} loading={loading}>
+          {loading ? 'Converting…' : 'Convert and save'}
+        </Button>
+      }
+      status={progress && (
+        <ProgressBar value={(progress.completed / progress.total) * 100}
+          label={`Converting ${progress.completed} of ${progress.total}`} />
+      )}
     >
-      <section className="mc-bento p-5 sm:p-6">
-        <div className="mb-5 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
-          <div className="sm:max-w-sm">
-            <label
-              htmlFor="output-format"
-              className="mc-label"
-            >
-              Output format
-            </label>
-            <select
-              id="output-format"
-              value={format}
-              onChange={(event) => setFormat(event.target.value)}
-              className="mc-input"
-            >
-              {FORMAT_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <Button onClick={handleConvert} disabled={!canConvert} loading={loading}>
-            {loading
-              ? progress
-                ? `Converting ${progress.completed}/${progress.total}...`
-                : 'Converting...'
-              : 'Convert and download'}
-          </Button>
-        </div>
-
-        <div className="space-y-4">
-          <DropZone
-            files={files}
-            onFilesChange={setFiles}
-            accept={IMAGE_ACCEPT}
-            dropLabel="Drag and drop images here"
-            activeDropLabel="Drop your images here"
-            hintLabel="Click to browse — JPG, PNG, WEBP, TIFF, BMP, GIF, HEIC, HEIF."
-          />
-
-          {progress && (
-            <ProgressBar
-              value={(progress.completed / progress.total) * 100}
-              label={`Converting ${progress.completed} of ${progress.total}`}
-            />
-          )}
-
-          <p className="text-sm leading-5 text-mut">{summary}</p>
-
-          {error && (
-            <Alert tone="error">{error}</Alert>
-          )}
-
-          {successMessage && <Alert tone="success">{successMessage}</Alert>}
-        </div>
-      </section>
+      <DropZone files={files} onFilesChange={setFiles} accept={IMAGE_ACCEPT} disabled={loading}
+        dropLabel="Drag and drop images here" activeDropLabel="Drop your images here"
+        hintLabel="JPG, PNG, WebP, TIFF, BMP, GIF, HEIC, HEIF" />
+      {error && <Alert tone="error">{error}</Alert>}
+      {savedPath && <Alert tone="success">Saved {outputName(savedPath)}. <RevealOutput path={savedPath} /></Alert>}
     </ToolShell>
   );
 }

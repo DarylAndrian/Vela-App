@@ -16,6 +16,7 @@ import { Stepper, ActionBar, ToastStack, ProgressOverlay } from './velapt/compon
 import { IconSprite } from './velapt/components/icons';
 import { exportPDF } from './velapt/lib/pdfExport';
 import { vela } from '../lib/ipc';
+import { RevealOutput } from '../components/RevealOutput';
 import { base64ToFile } from './picture/helpers';
 import './velapt/velapt.css';
 
@@ -36,6 +37,8 @@ let deleteTimer: any = null;
 
 export function VelaPtpApp() {
   const [, force] = useReducer((x) => x + 1, 0);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [savedPath, setSavedPath] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState({ msg: '', pct: 0 });
   const pageMiniRef = useRef<HTMLDivElement>(null);
@@ -90,7 +93,7 @@ export function VelaPtpApp() {
     });
     setBusy(false);
     state.busy = false;
-    if (res.ok) toast(`PDF exported — ${res.pages} page${res.pages > 1 ? 's' : ''}`);
+    if (res.ok) setSavedPath(res.saved ?? null);
     else if (!res.cancelled) toast('Export failed: ' + res.error, { type: 'error' });
   };
 
@@ -168,7 +171,7 @@ export function VelaPtpApp() {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (t.matches('input,select,textarea')) return;
-      if ((e.key === 'Delete' || e.key === 'Backspace') && active()) { e.preventDefault(); removePage(state.activeId); }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && state.activeId) { e.preventDefault(); removePage(state.activeId); }
       else if (e.key.toLowerCase() === 'r' && active() && state.flow.step === 2) { rotateActive(); }
       else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undoDelete(); }
       else if (e.key === 'Enter' && state.flow.step === 2) { e.preventDefault(); primaryAction(); }
@@ -214,9 +217,9 @@ export function VelaPtpApp() {
   });
 
   return (
-    <div className="vp-root">
+    <div className="vp-root" data-inspector-open={inspectorOpen}>
       <IconSprite />
-      <Stepper step={step} onStep={(s) => {
+      <Stepper step={step} inspectorOpen={inspectorOpen} onInspect={() => setInspectorOpen((open) => !open)} onStep={(s) => {
         if (s > 1 && !state.pages.length) { toast('Add at least one photo first', { type: 'warn' }); return; }
         goStep(s);
       }} />
@@ -239,6 +242,9 @@ export function VelaPtpApp() {
           <ExportPanel version={state.version} pageMiniRef={pageMiniRef} />
         </aside>
       </main>
+      {step === 3 && savedPath && (
+        <div className="vp-export-result" role="status">PDF saved. <RevealOutput path={savedPath} /></div>
+      )}
       <ActionBar
         step={step}
         busy={busy}

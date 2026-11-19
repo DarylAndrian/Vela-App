@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-19
+
+### Changed
+- Vela now uses a persistent sidebar and shared Settings across its built-in tools.
+- Media Converter opens directly to image conversion and keeps files, settings, and running jobs available when switching workspaces.
+- File exports use Windows save dialogs and offer to show the result in File Explorer.
+- Picture Connector, Photo to PDF, Chart Code, and Taiwan Year Calculator open directly to their workspaces.
+
+## [0.5.0] - 2026-11-18
+
+### Added
+- VelaIsland settings (widgets, hotkey, opacity, position) passed to the app as launch arguments
+- One-click download and install for Windows companion apps, with progress and cancel
+- Chart thumbnails in the Chart Code library
+
+### Changed
+- Whole app aligned to the Vela Design Guide 3.0 (Emerald Slate): shared colour roles for light and dark themes, DM Sans and Outfit type scale, card recipes, status badge colours, 2px focus ring, and reduced-motion support
+- Media Converter redesigned from its orange theme to Emerald Slate, with Lucide icons, Vela buttons, fields and alerts, and an icon-only tool menu on narrow windows
+- VelaPT restyled from its indigo theme to Emerald Slate
+- Small labels raised to a 12px minimum across all screens
+
+### Removed
+- Unused Instrument, JetBrains Mono, Inter, Space Grotesk and IBM Plex font files
+
 ## [0.4.0] - 2026-11-09
 
 First tracked release — the complete desktop version of Vela.

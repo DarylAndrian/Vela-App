@@ -1,3 +1,4 @@
+import { RevealOutput } from '../components/RevealOutput';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent,
@@ -51,6 +52,8 @@ function Thumb({ image, selected, onRemove, onPick }: {
 }
 
 export function PictureConnectorScreen() {
+  const [saving, setSaving] = useState(false);
+  const [savedPath, setSavedPath] = useState<string | null>(null);
   const [images, setImages] = useState<ProcessedImage[]>([]);
   const [pending, setPending] = useState(0);
   const [settings, setSettings] = useState<ConnectorSettings>(DEFAULT_SETTINGS);
@@ -192,19 +195,26 @@ export function PictureConnectorScreen() {
 
   const canExport = images.length > 0;
 
-  const download = useCallback(async () => {
+  const savePicture = useCallback(async () => {
     const canvas = canvasRef.current;
-    if (!canvas || !canExport) return;
-    const blob = await exportBlob(canvas, settings);
-    const saved = await vela().files.save(
-      `vela-connected-${fileStamp()}.${settings.format === 'jpeg' ? 'jpg' : 'png'}`,
-      settings.format === 'jpeg'
-        ? [{ name: 'JPEG image', extensions: ['jpg'] }]
-        : [{ name: 'PNG image', extensions: ['png'] }],
-      await blobToBase64(blob),
-    );
-    if (saved) say('Picture saved.');
-  }, [canExport, settings, say]);
+    if (!canvas || !canExport || saving) return;
+    setSaving(true);
+    try {
+      const blob = await exportBlob(canvas, settings);
+      const saved = await vela().files.save(
+        `vela-connected-${fileStamp()}.${settings.format === 'jpeg' ? 'jpg' : 'png'}`,
+        settings.format === 'jpeg'
+          ? [{ name: 'JPEG image', extensions: ['jpg'] }]
+          : [{ name: 'PNG image', extensions: ['png'] }],
+        await blobToBase64(blob),
+      );
+      if (saved) setSavedPath(saved);
+    } catch {
+      say('Could not save the image.', 'err');
+    } finally {
+      setSaving(false);
+    }
+  }, [canExport, saving, settings, say]);
 
   const copyImage = useCallback(async () => {
     const canvas = canvasRef.current;
@@ -214,7 +224,7 @@ export function PictureConnectorScreen() {
       await vela().clipboard.writeImage(await blobToBase64(blob));
       say('Copied to the clipboard.');
     } catch {
-      say('Could not copy the image. Try downloading it instead.', 'err');
+      say('Could not copy the image. Try saving it instead.', 'err');
     }
   }, [canExport, say]);
 
@@ -225,7 +235,7 @@ export function PictureConnectorScreen() {
 
   return (
     <div
-      className="page"
+      className="page desktop-workspace"
       onDragOver={(e) => {
         if (!hasFiles(e.dataTransfer)) return;
         e.preventDefault();
@@ -243,26 +253,22 @@ export function PictureConnectorScreen() {
       }}
       style={dragOver ? { outline: '2px dashed var(--accent)', outlineOffset: -8, borderRadius: 12 } : undefined}
     >
-      <p className="page-note">
-        <b>Picture Connector</b> — join screenshots into one picture with arrows. Everything stays on this PC:
-        images are discarded when the app closes. Drop, paste (Ctrl+V), or browse.
-      </p>
-
-      <div className="card-panel" style={{ padding: '16px 18px', marginBottom: 13 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 14 }}>
+      <div className="card-panel" style={{ padding: '12px 14px', marginBottom: 13 }}>
+        <div className="workspace-toolbar">
           <button className="btn primary" onClick={browse}>
-            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="M17 8l-5-5-5 5" /><path d="M12 3v12" /></svg>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M12 4v12M7 9l5-5 5 5" /></svg>
             Add images
           </button>
-          <div style={{
-            flex: 1, border: '1.5px dashed var(--border-strong)', borderRadius: 'var(--radius-md)',
-            padding: '9px 15px', fontSize: 12, color: 'var(--text-3)', textAlign: 'center',
-          }}>
-            Drag &amp; drop screenshots here, or press <b style={{ color: 'var(--text-2)' }}>Ctrl+V</b> to paste
-          </div>
-          {pending > 0 && <span className="badge blue"><span className="dot" />Processing {pending}…</span>}
-          {images.length > 0 && <span className="badge green"><span className="dot" />{images.length} images</span>}
+          <span className="workspace-hint">Drop images here or paste with Ctrl+V.</span>
+          {pending > 0 && <span role="status" className="badge blue">Processing {pending}…</span>}
+          <button className="btn" disabled={!canExport} onClick={copyImage}>Copy</button>
+          <button className="btn" disabled={!canExport || saving} onClick={savePicture}>
+            {saving ? 'Saving…' : 'Save As…'}
+          </button>
         </div>
+        {savedPath && (
+          <p className="workspace-result" role="status">Picture saved. <RevealOutput path={savedPath} /></p>
+        )}
         {images.length > 0 && (
           <div style={{ display: 'flex', gap: 9, overflowX: 'auto', paddingBottom: 3 }}>
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
@@ -277,7 +283,7 @@ export function PictureConnectorScreen() {
         )}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 292px', gap: 13, alignItems: 'start' }}>
+      <div className="picture-layout">
         <div className="card-panel" style={{ overflow: 'hidden' }}>
           <div style={{ padding: '9px 15px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 9 }}>
             <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.7px', color: 'var(--text-3)', textTransform: 'uppercase' }}>Live preview</span>
@@ -285,22 +291,13 @@ export function PictureConnectorScreen() {
             {canvasLimited && images.length > 0 && (
               <span className="badge amber">Scaled to fit the {16000}px canvas limit</span>
             )}
-            <button className="btn primary" disabled={!canExport} onClick={download}>
-              <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="M7 10l5 5 5-5" /><path d="M12 15V3" /></svg>
-              Download
-            </button>
-            <button className="btn" disabled={!canExport} onClick={copyImage}>
-              <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
-              Copy
-            </button>
           </div>
           <div style={{
-            padding: 24, minHeight: 420, display: 'grid', placeItems: 'center',
+            padding: 16, minHeight: 300, display: 'grid', placeItems: 'center',
             background: 'repeating-conic-gradient(var(--surface-2) 0% 25%, var(--surface) 0% 50%) 0 0/22px 22px',
           }}>
             {images.length === 0 ? (
               <div style={{ textAlign: 'center', color: 'var(--text-3)', fontSize: 12, lineHeight: 1.7 }}>
-                <div style={{ fontSize: 26, marginBottom: 8 }}>🖼️</div>
                 Add screenshots to see the composite here.
               </div>
             ) : (

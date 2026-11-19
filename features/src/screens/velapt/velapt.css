@@ -325,3 +325,25 @@ select:hover,select:focus{border-color:var(--accent)}
 @media (max-width:1280px){
   .workspace{grid-template-columns:186px minmax(0,1fr) 320px}
 }
+
+.stepbar { position: relative; }
+.step > button {
+  display: flex; align-items: center; gap: 8px; padding: 2px;
+  color: inherit; background: none; border: 0; font: inherit; cursor: pointer;
+}
+.step > button:disabled { cursor: default; }
+.vp-inspector-toggle { display: none; }
+.vp-export-result {
+  padding: 8px 18px; color: var(--text-2); font-size: 13px;
+  background: var(--surface); border-top: 1px solid var(--border);
+}
+@media (max-width: 950px) {
+  .workspace { position: relative; grid-template-columns: 152px minmax(0, 1fr); }
+  .vp-inspector-toggle { position: absolute; right: 12px; display: inline-flex; }
+  .workspace .inspector {
+    position: absolute; z-index: 10; inset: 0 0 0 auto; width: min(320px, 46%);
+    box-shadow: var(--shadow-overlay);
+  }
+  .vp-root[data-inspector-open="false"] .inspector { display: none; }
+  .stage { padding: 20px; }
+}

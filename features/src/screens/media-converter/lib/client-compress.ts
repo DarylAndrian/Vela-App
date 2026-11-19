@@ -1,4 +1,5 @@
 import JSZip from 'jszip';
+import { addZipOutput } from './zip-output';
 import { getMimeType, normalizeOutputFormat, replaceFileExtension } from './formats';
 import { COMPRESS_DEFAULT_TARGET_BYTES } from './compress-defaults';
 import {
@@ -280,7 +281,7 @@ export async function compressFilesToZip(
   for (let index = 0; index < files.length; index += 1) {
     const file = files[index];
     const { blob, filename } = await compressSingleFile(file, options);
-    zip.file(filename, blob);
+    addZipOutput(zip, filename, blob);
     onProgress?.(index + 1, files.length);
   }
 
