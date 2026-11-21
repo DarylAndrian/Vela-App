@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-21
+
+### Added
+- Macro Recorder in Home and the sidebar. Record and replay Windows mouse and keyboard actions, use global stop shortcuts, and open existing VelaClicker recordings.
+
 ## [0.6.0] - 2026-11-19
 
 ### Changed

@@ -1,16 +1,19 @@
 {
   "name": "vela",
   "productName": "Vela",
-  "version": "0.6.0",
+  "version": "0.8.0",
   "description": "Launcher for the Vela service family",
   "main": "src/main/main.js",
   "scripts": {
+    "macro:build": "node scripts/build-macro-host.js",
+    "prestart": "npm run macro:build",
     "start": "electron .",
+    "presmoke": "npm run macro:build",
     "smoke": "electron . --smoke",
     "shots": "electron . --shots",
     "features:dev": "npm --prefix features run dev",
     "features:build": "npm --prefix features run build",
-    "dist": "npm run features:build && electron-builder --win nsis"
+    "dist": "npm run macro:build && npm run features:build && electron-builder --win nsis"
   },
   "author": "Vela",
   "license": "MIT",

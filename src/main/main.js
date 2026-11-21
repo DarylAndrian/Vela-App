@@ -10,6 +10,7 @@ const mediaEngine = require('./mediaEngine');
 const imageEngine = require('./imageEngine');
 const modelCache = require('./modelCache');
 const installer = require('./installer');
+const macroEngine = require('./macroEngine');
 
 featuresProtocol.registerPrivileged();
 const FEATURES_DEV = process.argv.includes('--features-dev') || process.env.VELA_FEATURES_DEV === '1';
@@ -156,6 +157,13 @@ if (!gotLock) {
     imageEngine.registerIpc();
     modelCache.registerIpc({ notify });
     installer.registerIpc({ notify });
+    macroEngine.registerIpc({
+      getWindow: () => win,
+      getContents: () => viewManager.getView('macro')?.webContents,
+      isActive: () => viewManager.getViewId() === 'macro',
+      workspaceUrl: `${FEATURES_BASE}/macro.html`,
+      send,
+    });
   }
 
   async function runSmoke() {
@@ -164,20 +172,22 @@ if (!gotLock) {
     try {
       const cfg = config.load();
       const list = services.listWithStates(cfg);
-      check('services:list returns 7 services', list.length === 7);
+      check('services:list reports unique service IDs', new Set(list.map((service) => service.id)).size === list.length);
       check('coming-soon states correct', list.filter((s) => s.state === 'coming-soon').length === 0);
       check('native cards available', list.find((s) => s.id === 'chart-code').state === 'available'
         && list.find((s) => s.id === 'picture-connector').state === 'available');
       check('media-converter card available', list.find((s) => s.id === 'media-converter').state === 'available');
       check('velapt card available', list.find((s) => s.id === 'velapt').state === 'available');
       check('taiwan-year card available', list.find((s) => s.id === 'taiwan-year').state === 'available');
+      check('macro recorder card available', list.find((s) => s.id === 'macro').state === 'available');
+      const nativeCount = list.filter((s) => s.kind === 'native').length;
       check('config round-trip', !!config.save(config.load()).velaBaseUrl);
       const homeState = await win.webContents.executeJavaScript(`(async () => {
         const waitFor = async (ready) => {
           for (let i = 0; i < 40 && !ready(); i++) await new Promise((resolve) => setTimeout(resolve, 25));
           return ready();
         };
-        await waitFor(() => document.querySelectorAll('#toolNav button').length === 5);
+        await waitFor(() => document.querySelectorAll('#toolNav button').length === ${nativeCount});
         await window.launcher.showWorkspace('settings');
         const settings = await waitFor(() => !document.getElementById('settingsPanel').hidden);
         const account = document.getElementById('accountBtn').textContent;
@@ -189,8 +199,8 @@ if (!gotLock) {
           settings, account, home,
         };
       })()`);
-      check('persistent rail, Settings and launcher render', homeState.destinations === 5 &&
-        homeState.launches === 7 && homeState.settings && homeState.account && homeState.home, JSON.stringify(homeState));
+      check('persistent rail, Settings and launcher render', homeState.destinations === nativeCount &&
+        homeState.launches === list.length && homeState.settings && homeState.account && homeState.home, JSON.stringify(homeState));
       check('tasklist probe works (explorer.exe running)', await externalApps.isRunning('explorer.exe'));
       const wc = await new Promise((resolve) => {
         viewManager.openLocal('smoke-native', `${FEATURES_BASE}/chart-code.html`);
@@ -428,6 +438,55 @@ if (!gotLock) {
       check('taiwan-year converts Minguo to Gregorian', tyResult.toGregorian.includes('Year 2025') && tyResult.clearedGregorian, JSON.stringify(tyResult).slice(0, 120));
       viewManager.showShell();
 
+      // Exercise the real Windows helper without sending input to the desktop.
+      if (process.platform === 'win32') {
+        const rejected = await win.webContents.executeJavaScript("window.vela.macro.command('record')");
+        check('macro controls are restricted to their workspace', rejected.ok === false);
+        const fixture = path.join(smokeExports, 'legacy-macro.json');
+        const actions = [
+          { type: 'key_press', t: 3600, key: { kind: 'special', name: 'ctrl_r' } },
+          { type: 'key_release', t: 0, key: { kind: 'special', name: 'ctrl_r' } },
+          { type: 'scroll', t: 0, x: -30, y: 20, dx: 1, dy: -2 },
+        ];
+        fs.writeFileSync(fixture, JSON.stringify({ version: 1, events: actions }));
+        const openDialog = dialog.showOpenDialog;
+        dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [fixture] });
+        try {
+          await openService('macro');
+          const macroContents = viewManager.getView().webContents;
+          if (macroContents.isLoading()) await new Promise((resolve) => macroContents.once('did-stop-loading', resolve));
+          const macroResult = await macroContents.executeJavaScript(`(async () => {
+            const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            const ready = () => [...document.querySelectorAll('button')].some((button) =>
+              button.textContent.trim() === 'Record' && !button.disabled);
+            for (let i = 0; i < 40 && !ready(); i++) await pause(25);
+            if (!ready()) return { rendered: false, error: document.querySelector('[role="alert"]')?.textContent };
+            const { macro } = window.vela;
+            const opened = await macro.command('load');
+            const saved = await macro.command('save');
+            const played = await macro.command('play', { repetitions: 2 });
+            const starting = (await macro.status()).state;
+            await macro.command('stop');
+            let stopped = (await macro.status()).state;
+            for (let i = 0; i < 40 && stopped.phase !== 'idle'; i++) {
+              await pause(25);
+              stopped = (await macro.status()).state;
+            }
+            return { rendered: true, opened, saved, played, starting, stopped };
+          })()`);
+          check('macro workspace imports and exports a VelaClicker recording', macroResult.rendered &&
+            macroResult.opened.ok && macroResult.saved.ok && macroResult.starting.actionCount === actions.length &&
+            JSON.parse(fs.readFileSync(fixture, 'utf8')).event_count === actions.length, JSON.stringify(macroResult).slice(0, 180));
+          check('macro playback countdown cancels before sending input', macroResult.played?.ok &&
+            macroResult.starting.phase === 'countdown' && macroResult.stopped.phase === 'idle' &&
+            macroResult.stopped.cycles === 0, macroResult.stopped?.notice);
+        } finally {
+          dialog.showOpenDialog = openDialog;
+          viewManager.discard('macro');
+          viewManager.showShell();
+        }
+      }
+
       // Media Converter native engine E2E: real ffmpeg through the preload IPC.
       const { spawn } = require('child_process');
       const mediaTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vela-media-smoke-'));
@@ -462,7 +521,9 @@ if (!gotLock) {
       check('media converter opens directly to image conversion', mcHome.modes === 6 && mcHome.active === 'Convert images' && mcHome.addFiles && mcHome.bridge, JSON.stringify(mcHome));
       const [wideWidth, wideHeight] = win.getSize();
       win.setSize(960, 640);
-      await new Promise((resolve) => setTimeout(resolve, 350));
+      for (let attempt = 0; attempt < 40 && viewManager.getView().getBounds().x !== 64; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
       const compactBounds = viewManager.getView().getBounds();
       const compactControls = await mcWc.executeJavaScript(`(() => {
         const visible = (selector) => {

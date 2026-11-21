@@ -3,6 +3,7 @@ const ICONS = {
   pictures: '<rect x="3" y="5" width="10" height="10" rx="2"/><rect x="11" y="9" width="10" height="10" rx="2"/><path d="M7 12l2 2 3-4"/>',
   convert: '<path d="M8 4L4 8l4 4"/><path d="M4 8h12a4 4 0 0 1 0 8h-2"/><path d="M16 20l4-4-4-4"/>',
   calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/><path d="M8 15h3M13 15h3"/>',
+  macro: '<path d="M9 3v2M6.16 6.16 4.74 4.74M5 9H3m6 4v2m4-6h2m-8.84 2.84-1.42 1.42m8.52-8.52-1.42 1.42M10 10l4 11 1.8-5.2L21 14Z"/>',
   pdf: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><circle cx="12" cy="14" r="2.5"/><path d="M8 14h1.5M14.5 14H16"/>',
   island: '<rect x="5" y="8" width="14" height="8" rx="4"/><path d="M9 12h.01M15 12h.01"/>',
   zoom: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="M21 21l-5-5"/><path d="M8 10.5h5M10.5 8v5"/>',
@@ -29,6 +30,7 @@ let toastTimer = null;
 let destination = 'home';
 let activeViewId = null;
 let mediaActivity = 0;
+let macroActive = false;
 let draftTheme = 'system';
 
 function toast(msg) {
@@ -69,7 +71,7 @@ function renderNav() {
     button.title = label;
     button.setAttribute('aria-label', label);
     button.innerHTML = `${icon(svc.icon)}<span class="rail-label">${label}</span>`;
-    if (svc.id === 'media-converter') {
+    if (svc.id === 'media-converter' || svc.id === 'macro') {
       button.insertAdjacentHTML('beforeend', '<span class="nav-activity" hidden aria-hidden="true"></span>');
     }
     button.addEventListener('click', () => window.launcher.openService(svc.id));
@@ -77,6 +79,7 @@ function renderNav() {
   }));
   selectNav(destination);
   updateMediaActivity(mediaActivity);
+  updateMacroActivity(macroActive);
   if (focused) nav.querySelector(`[data-destination="${focused}"]`)?.focus();
 }
 
@@ -85,6 +88,16 @@ function selectNav(id) {
     if (button.dataset.destination === id) button.setAttribute('aria-current', 'page');
     else button.removeAttribute('aria-current');
   });
+}
+
+function updateMacroActivity(active) {
+  macroActive = active;
+  const button = $('toolNav').querySelector('[data-destination="macro"]');
+  if (!button) return;
+  const label = active ? 'Macro Recorder · Active' : 'Macro Recorder';
+  button.title = label;
+  button.setAttribute('aria-label', label);
+  button.querySelector('.nav-activity').hidden = !active;
 }
 
 function updateMediaActivity(count) {
@@ -479,6 +492,9 @@ window.launcher.onEvent((ev) => {
       break;
     case 'media-activity':
       updateMediaActivity(ev.count);
+      break;
+    case 'macro:activity':
+      updateMacroActivity(ev.active);
       break;
     case 'needs-config':
       openSettings();

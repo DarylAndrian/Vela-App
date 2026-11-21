@@ -34,6 +34,7 @@ export default defineConfig({
         'media-converter': resolve(__dirname, 'media-converter.html'),
         'taiwan-year': resolve(__dirname, 'taiwan-year.html'),
         velapt: resolve(__dirname, 'velapt.html'),
+        macro: resolve(__dirname, 'macro.html'),
       },
     },
   },

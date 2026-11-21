@@ -113,13 +113,14 @@ function showShell(destination = 'home') {
   send('service:state', { type: 'shell', destination });
 }
 
-function getView() {
-  return views.get(activeId)?.view || null;
+function getView(id = activeId) {
+  return views.get(id)?.view || null;
 }
 
 function notifyViews(channel, payload) {
   for (const { view } of views.values()) {
-    if (!view.webContents.isDestroyed()) view.webContents.send(channel, payload);
+    const contents = view.webContents;
+    if (contents && !contents.isDestroyed()) contents.send(channel, payload);
   }
 }
 

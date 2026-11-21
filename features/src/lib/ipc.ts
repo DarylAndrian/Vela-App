@@ -36,6 +36,20 @@ export type ChartChanges = Partial<Pick<ChartCode, 'title' | 'mmd_code' | 'produ
 
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string; authExpired?: boolean; status?: number };
 
+export type MacroCommand = 'record' | 'play' | 'stop' | 'load' | 'save' | 'clear';
+
+export interface MacroState {
+  phase: 'idle' | 'recording' | 'countdown' | 'playing' | 'stopping';
+  actionCount: number;
+  cycles: number;
+  repetitions: number | null;
+  elapsedMs: number;
+  countdown: number;
+  fileName: string | null;
+  notice: string | null;
+  error: string | null;
+}
+
 interface VelaBridge {
   status(): Promise<VelaStatus>;
   connect(token: string): Promise<VelaStatus>;
@@ -50,6 +64,12 @@ interface VelaBridge {
   };
   products: {
     list(): Promise<Result<Product[]>>;
+  };
+  macro: {
+    status(): Promise<{ supported: boolean; state: MacroState }>;
+    command(command: MacroCommand, options?: { recordMoves?: boolean; repetitions?: number }):
+      Promise<{ ok: true } | { ok: false; error: string }>;
+    onState(callback: (state: MacroState) => void): () => void;
   };
   files: {
     save(defaultName: string, filters: { name: string; extensions: string[] }[], dataBase64: string): Promise<string | null>;

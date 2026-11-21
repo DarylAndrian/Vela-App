@@ -61,6 +61,15 @@ contextBridge.exposeInMainWorld('vela', {
   products: {
     list: () => ipcRenderer.invoke('products:list'),
   },
+  macro: {
+    status: () => ipcRenderer.invoke('macro:status'),
+    command: (command, options) => ipcRenderer.invoke('macro:command', command, options),
+    onState: (cb) => {
+      const listener = (_e, state) => cb(state);
+      ipcRenderer.on('macro:state', listener);
+      return () => ipcRenderer.removeListener('macro:state', listener);
+    },
+  },
   files: {
     save: (defaultName, filters, dataBase64) => ipcRenderer.invoke('files:save', { defaultName, filters, dataBase64 }),
     reveal: (target) => ipcRenderer.invoke('files:reveal', target),

@@ -17,6 +17,7 @@ Vela-App is a desktop launcher for the Vela service family. Instead of juggling 
 - **Picture Connector** — combine and arrange pictures; fully local, no account needed
 - **Media Converter** — a six-tool local suite powered by native ffmpeg: convert, compress, and process media entirely on your PC — files are never uploaded. AI background-removal models are downloaded on first use and stay local afterwards
 - **Taiwan Year Calculator** — convert between ROC (Taiwan) years and the Gregorian calendar, fully offline
+- **Macro Recorder** — record mouse and keyboard actions, then replay them for a set number of cycles or in a loop. Press **F9** to stop recording and **F10** to cancel or stop playback. Open existing VelaClicker JSON files and save recordings locally.
 
 ### Desktop integration
 - Native Windows app with NSIS installer (desktop and Start menu shortcuts)
@@ -28,11 +29,14 @@ Vela-App is a desktop launcher for the Vela service family. Instead of juggling 
 ### Prerequisites
 - Node.js (v18+ recommended)
 - Windows (build and runtime target)
+- Windows .NET Framework 4.x (included in Windows 10 and 11) for the bundled macro engine
 
 ### Development
 
 ```bash
 npm install
+npm --prefix features ci
+npm run features:build
 npm start
 ```
 
@@ -45,13 +49,14 @@ Useful scripts:
 | `npm run shots` | Capture app screenshots |
 | `npm run features:dev` | Start the Vite dev server for native tools (`features/`) |
 | `npm run features:build` | Build the native tools bundle |
-| `npm run dist` | Build tools + package the Windows NSIS installer |
+| `npm run dist` | Build the tools and Windows macro engine, then package the NSIS installer |
 
 ## Project layout
 
 ```
 src/        Electron main, preload, and launcher renderer
 features/   Native tools (React + Vite), served inside the app
+native/     Windows macro input engine
 assets/     Icons and static assets
 scripts/    Build and test helper scripts
 ```

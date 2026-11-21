@@ -14,6 +14,9 @@ asarUnpack:
 win:
   target: nsis
   icon: assets/icon.ico
+  extraResources:
+    - from: native/macro/dist/VelaMacroHost.exe
+      to: VelaMacroHost.exe
 nsis:
   oneClick: false
   perMachine: false

@@ -43,6 +43,16 @@ const SERVICES = [
     icon: 'calendar',
   },
   {
+    id: 'macro',
+    name: 'Macro Recorder',
+    description: 'Record clicks, scrolling and keystrokes, then replay them on Windows.',
+    kind: 'native',
+    category: 'local',
+    kindLabel: 'Built-in',
+    page: 'macro.html',
+    icon: 'macro',
+  },
+  {
     id: 'velapt',
     name: 'VelaPTP — Photo to PDF',
     description: 'Photo to PDF Studio: perspective crop, scan enhancement, page layout.',
