@@ -52,6 +52,10 @@ function applyTheme(choice) {
     chip.classList.toggle('active', selected);
     chip.setAttribute('aria-pressed', String(selected));
   });
+  document.querySelectorAll('#themeSwitcher .theme-btn').forEach((btn) => {
+    const selected = btn.dataset.themeQuick === choice;
+    btn.setAttribute('aria-pressed', String(selected));
+  });
 }
 
 /* ---------- Destinations and launcher ---------- */
@@ -118,52 +122,91 @@ function renderCards() {
     section.innerHTML = `<h2>${heading}</h2><div class="launcher-list"></div>`;
 
     for (const svc of services.filter((item) => item.kind === kind)) {
-      const row = document.createElement('div');
-      row.className = 'launcher-row';
-      row.dataset.id = svc.id;
-      row.dataset.state = svc.state;
-      const showState = kind === 'external' && svc.state !== 'available';
-      row.innerHTML = `
-        <span class="launcher-icon">${icon(svc.icon)}</span>
-        <div class="launcher-description"><h3>${svc.name}</h3><p>${svc.description}</p></div>
-        <span class="badge ${svc.state}" ${showState ? '' : 'hidden'}>${BADGE_LABELS[svc.state] || ''}</span>
+      const card = document.createElement('div');
+      card.className = 'launcher-card';
+      card.dataset.id = svc.id;
+      card.innerHTML = `
+        <div class="launcher-card-main">
+          <span class="launcher-icon">${icon(svc.icon)}</span>
+          <div class="launcher-description">
+            <div class="launcher-title-row">
+              <h3>${svc.name}</h3>
+              <span class="badge"></span>
+            </div>
+            <p>${svc.description}</p>
+          </div>
+          <span class="launcher-arrow" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </span>
+        </div>
         <div class="launcher-actions"></div>
       `;
-      renderActions(row, svc);
-      section.querySelector('.launcher-list').appendChild(row);
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('button')) return;
+        if (card.dataset.interactive === 'true') onCardClick(svc);
+      });
+      card.addEventListener('keydown', (e) => {
+        if (e.target !== card || card.dataset.interactive !== 'true') return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onCardClick(svc);
+        }
+      });
+      syncCard(card, svc);
+      section.querySelector('.launcher-list').appendChild(card);
     }
     grid.appendChild(section);
   }
 }
 
-function renderActions(row, svc) {
-  const actions = row.querySelector('.launcher-actions');
-  const items = svc.state === 'unavailable'
-    ? [['Install', () => startInstall(svc)], ['Locate…', () => locateFor(svc)]]
-    : [[svc.state === 'needs-config' ? 'Settings' : 'Open', () => onCardClick(svc)]];
-  actions.replaceChildren(...items.map(([label, action]) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'btn';
-    button.textContent = label;
-    button.setAttribute('aria-label', `${label} ${svc.name}`);
-    button.disabled = ['installing', 'coming-soon'].includes(svc.state);
-    button.addEventListener('click', action);
-    return button;
-  }));
+function syncCard(card, svc) {
+  card.dataset.state = svc.state;
+  const interactive = !['unavailable', 'installing', 'coming-soon'].includes(svc.state);
+  card.dataset.interactive = String(interactive);
+  if (interactive) {
+    card.setAttribute('role', 'button');
+    card.tabIndex = 0;
+    const verb = svc.state === 'needs-config' ? 'Configure' : 'Open';
+    card.setAttribute('aria-label', `${verb} ${svc.name}`);
+  } else {
+    card.removeAttribute('role');
+    card.removeAttribute('tabindex');
+    card.removeAttribute('aria-label');
+  }
+
+  const badge = card.querySelector('.badge');
+  const showState = svc.kind === 'external' && svc.state !== 'available';
+  badge.hidden = !showState;
+  badge.className = `badge ${svc.state}`;
+  badge.textContent = BADGE_LABELS[svc.state] || '';
+
+  card.querySelector('.launcher-arrow').hidden = !interactive;
+
+  const actions = card.querySelector('.launcher-actions');
+  if (svc.state === 'unavailable') {
+    const items = [['Install', () => startInstall(svc)], ['Locate…', () => locateFor(svc)]];
+    actions.replaceChildren(...items.map(([label, action]) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn';
+      button.textContent = label;
+      button.setAttribute('aria-label', `${label} ${svc.name}`);
+      button.addEventListener('click', action);
+      return button;
+    }));
+    actions.hidden = false;
+  } else {
+    actions.replaceChildren();
+    actions.hidden = true;
+  }
 }
 
 function setCardState(id, state) {
   const svc = services.find((item) => item.id === id);
-  const row = grid.querySelector(`[data-id="${id}"]`);
-  if (!svc || !row) return;
+  const card = grid.querySelector(`[data-id="${id}"]`);
+  if (!svc || !card) return;
   svc.state = state;
-  row.dataset.state = state;
-  const badge = row.querySelector('.badge');
-  badge.hidden = state === 'available';
-  badge.className = `badge ${state}`;
-  badge.textContent = BADGE_LABELS[state] || state;
-  renderActions(row, svc);
+  syncCard(card, svc);
 }
 
 function onCardClick(svc) {
@@ -628,6 +671,20 @@ $('appearanceChips').addEventListener('click', (e) => {
   if (!chip) return;
   draftTheme = chip.dataset.themeChoice;
   applyTheme(draftTheme);
+});
+
+let themeSaveSeq = 0;
+$('themeSwitcher').addEventListener('click', async (e) => {
+  const btn = e.target.closest('.theme-btn');
+  if (!btn) return;
+  const choice = btn.dataset.themeQuick;
+  if (!choice) return;
+  const seq = ++themeSaveSeq;
+  draftTheme = choice;
+  applyTheme(choice);
+  const base = cfg.configPath ? cfg : await window.launcher.getConfig();
+  const saved = await window.launcher.saveConfig({ ...base, theme: choice });
+  if (seq === themeSaveSeq) cfg = { ...base, ...saved };
 });
 
 window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {

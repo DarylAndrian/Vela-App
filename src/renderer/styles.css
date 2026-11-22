@@ -158,6 +158,9 @@
     display: grid; place-items: center; flex: none;
     background: var(--accent); color: var(--on-accent);
   }
+  [data-theme="light"] .brand-icon {
+    background: var(--accent-text); color: #FFFFFF;
+  }
   .brand-icon svg { width: 27px; height: 27px; }
   .destination-nav, #toolNav { display: flex; flex-direction: column; gap: 3px; }
   .destination-nav { flex: 1; padding-top: 8px; }
@@ -182,31 +185,83 @@
   .workspace-frame { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   .workspace-header {
     position: relative; height: 52px; flex: none; padding: 0 20px;
-    display: flex; align-items: center; background: var(--bg);
-    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    background: var(--bg); border-bottom: 1px solid var(--border);
   }
   .workspace-header h1 { font-size: 17px; font-weight: 650; }
+  .theme-switcher {
+    display: inline-flex; align-items: center; gap: 2px; padding: 3px;
+    border-radius: var(--radius-sm); background: var(--surface);
+    border: 1px solid var(--border);
+  }
+  .theme-btn {
+    width: 28px; height: 28px; display: grid; place-items: center;
+    border: none; border-radius: 6px; background: transparent;
+    color: var(--text-2); cursor: pointer;
+    transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease;
+  }
+  .theme-btn:hover { color: var(--text); background: var(--card-hover); }
+  .theme-btn[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    color: var(--accent-text);
+  }
+  .theme-btn:focus-visible { outline-offset: 1px; }
+  .theme-btn svg {
+    width: 15px; height: 15px; fill: none; stroke: currentColor;
+    stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+  }
   .workspace-area { flex: 1; min-height: 0; position: relative; }
   .workspace-scroll { height: 100%; overflow: auto; padding: 20px 24px 28px; }
   .workspace-message { max-width: 660px; margin: 22px; color: var(--text-2); }
   .workspace-message .btn { margin-top: 12px; }
-  .launcher, .settings-form { max-width: 960px; margin: 0 auto; }
-  .launcher-section + .launcher-section { margin-top: 24px; }
-  .launcher-section h2 { font-size: 14px; font-weight: 650; margin-bottom: 8px; }
-  .launcher-list { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
-  .launcher-row { min-height: 60px; display: flex; align-items: center; gap: 12px; padding: 8px 12px; }
-  .launcher-row + .launcher-row { border-top: 1px solid var(--border); }
-  .launcher-icon {
-    flex: none; width: 32px; height: 32px; display: grid; place-items: center;
-    color: var(--accent-text); background: var(--surface-2); border-radius: var(--radius-sm);
+  .launcher { max-width: 1120px; margin: 0 auto; }
+  .settings-form { max-width: 680px; margin: 0 auto; }
+  .launcher-section + .launcher-section { margin-top: 28px; }
+  .launcher-section h2 { font-size: 14px; font-weight: 650; margin-bottom: 12px; }
+  .launcher-list {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;
   }
+  .launcher-card {
+    min-height: 92px; display: flex; flex-direction: column; justify-content: center; gap: 12px;
+    padding: 16px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-md); box-shadow: var(--shadow);
+    transition: background-color var(--dur-fast) ease, border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
+  }
+  .launcher-card[data-interactive="true"] { cursor: pointer; }
+  .launcher-card[data-interactive="true"]:hover {
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border-strong));
+    box-shadow: 0 4px 14px -4px rgba(0, 0, 0, .09);
+  }
+  [data-theme="dark"] .launcher-card[data-interactive="true"]:hover {
+    background: var(--card-hover);
+    box-shadow: var(--shadow);
+  }
+  .launcher-card-main { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .launcher-icon {
+    flex: none; width: 40px; height: 40px; display: grid; place-items: center;
+    color: var(--accent-text); background: color-mix(in srgb, var(--accent) 12%, transparent);
+    border-radius: 10px;
+  }
+  .launcher-icon svg { width: 20px; height: 20px; }
   .launcher-description { min-width: 0; flex: 1; }
-  .launcher-description h3 { font-size: 13px; font-weight: 650; }
-  .launcher-description p { font-size: 12px; color: var(--text-2); margin-top: 2px; }
-  .launcher-actions { display: flex; align-items: center; gap: 6px; }
-  .launcher-actions .btn { min-height: 32px; font-size: 12px; padding: 0 12px; }
+  .launcher-title-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .launcher-description h3 { font-size: 13.5px; font-weight: 650; line-height: 1.3; }
+  .launcher-description p { font-size: 12px; line-height: 1.45; color: var(--text-2); margin-top: 3px; }
+  .launcher-card .badge { font-size: 11px; line-height: 14px; padding: 2px 7px; }
+  .launcher-arrow {
+    flex: none; display: grid; place-items: center; color: var(--text-3); opacity: .65;
+    transition: transform var(--dur-fast) ease, color var(--dur-fast) ease, opacity var(--dur-fast) ease;
+  }
+  .launcher-arrow svg {
+    width: 16px; height: 16px; fill: none; stroke: currentColor;
+    stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round;
+  }
+  .launcher-card[data-interactive="true"]:hover .launcher-arrow {
+    transform: translateX(2px); color: var(--accent-text); opacity: 1;
+  }
+  .launcher-actions { display: flex; align-items: center; gap: 8px; padding-left: 52px; }
+  .launcher-actions .btn { min-height: 30px; font-size: 12px; padding: 0 12px; }
   .launcher-actions .btn:focus-visible { outline-offset: 1px; }
-  .settings-form { max-width: 680px; }
   .settings-account {
     display: flex; gap: 12px; align-items: center; justify-content: space-between;
     padding: 12px 14px; margin-bottom: 20px; background: var(--surface);
@@ -222,6 +277,12 @@
     .rail-label { display: none; }
     .nav-item { justify-content: center; padding: 0; }
     .nav-activity { position: absolute; right: 5px; top: 5px; }
+  }
+  @media (max-width: 860px) {
+    .launcher-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 560px) {
+    .launcher-list { grid-template-columns: 1fr; }
   }
 
   .badge {
