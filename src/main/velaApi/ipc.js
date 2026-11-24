@@ -86,12 +86,13 @@ function registerIpc({ notify: notifyFn, getWindow, accountChanged }) {
   ipcMain.handle('charts:delete', wrap((id) => chartsApiAfter().delete(id)));
   ipcMain.handle('products:list', wrap(() => chartsApiAfter().listProducts()));
 
-  ipcMain.handle('files:save', async (_e, { defaultName, filters, dataBase64 }) => {
+  ipcMain.handle('files:save', async (_e, { defaultName, filters, dataBase64, sourcePath }) => {
     const result = await dialog.showSaveDialog(getWindow(), { defaultPath: defaultName, filters });
     if (result.canceled || !result.filePath) return null;
     const temp = path.join(path.dirname(result.filePath), `.vela-${randomUUID()}.tmp`);
     try {
       await fs.promises.writeFile(temp, Buffer.from(dataBase64, 'base64'), { flag: 'wx' });
+      if (sourcePath) await protectSourcePdf(sourcePath, result.filePath);
       await fs.promises.rename(temp, result.filePath);
     } finally {
       await fs.promises.rm(temp, { force: true }).catch(() => {});
@@ -126,6 +127,25 @@ function registerIpc({ notify: notifyFn, getWindow, accountChanged }) {
   });
 
   ipcMain.handle('clipboard:write-text', (_e, text) => clipboard.writeText(text));
+}
+
+async function protectSourcePdf(sourcePath, destination) {
+  const normalize = (file) => process.platform === 'win32' ? path.resolve(file).toLowerCase() : path.resolve(file);
+  if (normalize(sourcePath) === normalize(destination)) {
+    throw new Error('Choose a different file name or folder to protect the original PDF.');
+  }
+  const target = await fs.promises.stat(destination, { bigint: true }).catch((error) => {
+    if (error.code !== 'ENOENT') throw error;
+    return null;
+  });
+  if (!target) return;
+  const source = await fs.promises.stat(sourcePath, { bigint: true }).catch((error) => {
+    if (error.code !== 'ENOENT') throw error;
+    return null;
+  });
+  if (source && source.dev === target.dev && source.ino === target.ino) {
+    throw new Error('Choose a different file name or folder to protect the original PDF.');
+  }
 }
 
 function chartsApiAfter() {

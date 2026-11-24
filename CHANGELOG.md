@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-11-24
+
+### Added
+- Sign PDF in the sidebar and Home’s built-in tools. Draw or import a signature, place it on a PDF, and save a signed copy offline.
+
 ## [0.8.0] - 2026-11-21
 
 ### Added

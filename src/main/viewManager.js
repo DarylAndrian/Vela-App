@@ -1,4 +1,4 @@
-const { WebContentsView, shell } = require('electron');
+const { WebContentsView, dialog, ipcMain, shell } = require('electron');
 const path = require('path');
 
 let win;
@@ -7,12 +7,27 @@ let workspace;
 let activeId;
 const views = new Map();
 
+ipcMain.on('sign-pdf:dirty', (event, dirty) => {
+  const entry = views.get('sign-pdf');
+  if (entry?.view.webContents === event.sender) entry.dirty = dirty === true;
+});
+
 function attach(browserWindow, sender) {
   win = browserWindow;
   send = sender;
   workspace = null;
   win.webContents.on('before-input-event', focusWorkspace);
-  win.on('close', () => {
+  win.on('close', (event) => {
+    if (views.get('sign-pdf')?.dirty && dialog.showMessageBoxSync(win, {
+      type: 'warning',
+      message: 'Discard unsaved changes to this PDF?',
+      buttons: ['Keep editing', 'Discard changes'],
+      defaultId: 0,
+      cancelId: 0,
+    }) !== 1) {
+      event.preventDefault();
+      return;
+    }
     for (const id of views.keys()) discard(id);
   });
 }

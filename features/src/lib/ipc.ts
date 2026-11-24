@@ -72,7 +72,9 @@ interface VelaBridge {
     onState(callback: (state: MacroState) => void): () => void;
   };
   files: {
-    save(defaultName: string, filters: { name: string; extensions: string[] }[], dataBase64: string): Promise<string | null>;
+    save(defaultName: string, filters: { name: string; extensions: string[] }[], dataBase64: string, sourcePath?: string): Promise<string | null>;
+    getPathForFile(file: File): string;
+    reportUnsignedChanges(dirty: boolean): void;
     reveal(target: string): Promise<{ ok: boolean }>;
     openImages(): Promise<{ name: string; dataBase64: string }[]>;
   };

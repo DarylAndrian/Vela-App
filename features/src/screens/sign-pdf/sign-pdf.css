@@ -1,0 +1,74 @@
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg-base); color: var(--text); font-family: var(--font); }
+button, input { font: inherit; }
+.sign-app { height: 100dvh; display: flex; flex-direction: column; }
+.sign-header, .sign-toolbar {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  flex: none; gap: 10px 16px; padding: 14px 20px; background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.sign-heading { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.sign-heading > svg { color: var(--accent-text); flex: none; }
+.sign-heading > div { min-width: 0; }
+.sign-heading span {
+  display: block; max-width: min(48vw, 480px); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; color: var(--text-2); font-size: 13px;
+}
+.sign-app h1, .sign-app h2 { margin: 0; font-family: var(--font-display); font-weight: 600; }
+.sign-app h1 { font-size: 22px; }
+.sign-app h2 { font-size: 22px; }
+.sign-toolbar { padding-block: 8px; }
+.sign-toolbar span { font-size: 13px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.sign-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.sign-app button, .sign-file {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  min-height: 34px; padding: 6px 10px; color: var(--text); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.sign-app button:hover:not(:disabled), .sign-file:hover { border-color: var(--accent); }
+.sign-app .sign-primary { background: var(--accent); color: var(--on-accent); }
+.sign-app button:disabled, .sign-file:has(input:disabled) { opacity: 0.5; cursor: default; }
+.sign-app button[aria-pressed="true"] { color: var(--accent-text); border-color: var(--accent); }
+.sign-app :focus-visible, .sign-file:has(:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+.sign-file { position: relative; }
+.sign-file input { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: inherit; }
+.sign-start { flex: 1; display: grid; place-items: center; padding: 24px; overflow: auto; }
+.sign-drop {
+  text-align: center; padding: 48px 24px; width: min(100%, 520px); background: var(--surface);
+  border: 1px dashed var(--border-control); border-radius: var(--radius-lg);
+}
+.sign-drop > svg { margin-bottom: 12px; color: var(--accent-text); }
+.sign-drop p, .sign-dialog p { color: var(--text-2); font-size: 14px; }
+.sign-drop .sign-file { margin-top: 8px; }
+.sign-app .sign-error { color: var(--danger); }
+.sign-notice { padding: 6px 20px; min-height: 30px; font-size: 13px; background: var(--surface); color: var(--text-2); }
+.sign-viewer { flex: 1; min-height: 0; overflow: auto; background: var(--bg-subtle); }
+.sign-paper-area { width: max-content; min-width: 100%; padding: 28px; display: flex; justify-content: center; }
+.sign-page { position: relative; flex: none; background: white; box-shadow: var(--shadow-lift); }
+.sign-page > canvas { display: block; width: 100%; height: 100%; }
+.sign-page.is-placing { cursor: crosshair; }
+.sign-ghost, .sign-mark { position: absolute; }
+.sign-ghost { pointer-events: none; opacity: 0.6; }
+.sign-app .sign-mark-image {
+  display: block; padding: 0; border: 0; border-radius: 0; min-height: 0;
+  width: 100%; height: 100%; background: transparent; cursor: move; touch-action: none;
+}
+.sign-mark-image img { display: block; width: 100%; height: 100%; pointer-events: none; }
+.sign-mark.is-selected { outline: 1px solid #059669; }
+.sign-app .sign-resize {
+  position: absolute; right: 0; bottom: 0; transform: translate(45%, 45%);
+  min-height: 0; width: 17px; height: 17px; padding: 0; border-radius: 50%;
+  background: #059669; border: 2px solid white; cursor: nwse-resize; touch-action: none;
+}
+.sign-render-error { position: absolute; inset: 0; display: grid; place-items: center; color: #991b1b; }
+.sign-dialog {
+  width: min(480px, calc(100% - 32px)); padding: 22px; color: var(--text); background: var(--surface);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-lg); box-shadow: var(--shadow-overlay);
+}
+.sign-dialog::backdrop { background: var(--scrim); }
+.sign-dialog .sign-actions { margin-top: 14px; justify-content: flex-end; }
+.sign-pad {
+  display: block; width: 100%; height: 150px; background: #fff;
+  border-radius: var(--radius-sm); cursor: crosshair; touch-action: none;
+}

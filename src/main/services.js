@@ -43,6 +43,16 @@ const SERVICES = [
     icon: 'calendar',
   },
   {
+    id: 'sign-pdf',
+    name: 'Sign PDF',
+    description: 'Add your signature to a PDF and save a signed copy on your computer.',
+    kind: 'native',
+    category: 'local',
+    kindLabel: 'Built-in',
+    page: 'sign-pdf.html',
+    icon: 'pdf',
+  },
+  {
     id: 'macro',
     name: 'Macro Recorder',
     description: 'Record clicks, scrolling and keystrokes, then replay them on Windows.',

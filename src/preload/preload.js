@@ -71,7 +71,9 @@ contextBridge.exposeInMainWorld('vela', {
     },
   },
   files: {
-    save: (defaultName, filters, dataBase64) => ipcRenderer.invoke('files:save', { defaultName, filters, dataBase64 }),
+    save: (defaultName, filters, dataBase64, sourcePath) => ipcRenderer.invoke('files:save', { defaultName, filters, dataBase64, sourcePath }),
+    getPathForFile: (file) => webUtils.getPathForFile(file),
+    reportUnsignedChanges: (dirty) => ipcRenderer.send('sign-pdf:dirty', dirty),
     reveal: (target) => ipcRenderer.invoke('files:reveal', target),
     openImages: () => ipcRenderer.invoke('files:open-images'),
   },
