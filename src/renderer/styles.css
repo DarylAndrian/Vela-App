@@ -214,12 +214,12 @@
   .workspace-scroll { height: 100%; overflow: auto; padding: 20px 24px 28px; }
   .workspace-message { max-width: 660px; margin: 22px; color: var(--text-2); }
   .workspace-message .btn { margin-top: 12px; }
-  .launcher { max-width: 1120px; margin: 0 auto; }
+  .launcher { width: 100%; }
   .settings-form { max-width: 680px; margin: 0 auto; }
   .launcher-section + .launcher-section { margin-top: 28px; }
   .launcher-section h2 { font-size: 14px; font-weight: 650; margin-bottom: 12px; }
   .launcher-list {
-    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;
   }
   .launcher-card {
     min-height: 92px; display: flex; flex-direction: column; justify-content: center; gap: 12px;
@@ -278,13 +278,6 @@
     .nav-item { justify-content: center; padding: 0; }
     .nav-activity { position: absolute; right: 5px; top: 5px; }
   }
-  @media (max-width: 860px) {
-    .launcher-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  }
-  @media (max-width: 560px) {
-    .launcher-list { grid-template-columns: 1fr; }
-  }
-
   .badge {
     display: inline-flex; align-items: center; gap: 6px;
     font-size: 12px; line-height: 16px; font-weight: 500; padding: 4px 8px; border-radius: var(--radius-pill);
