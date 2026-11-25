@@ -37,9 +37,10 @@ function registerPrivileged() {
 
 // Runs after app ready. Serves app://features/<path> from features/dist and
 // app://models/<path> from the userData model cache (background-removal assets).
-function serve() {
-  protocol.handle(SCHEME, async (request) => {
+function serve(target = protocol, featuresOnly = false) {
+  target.handle(SCHEME, async (request) => {
     const url = new URL(request.url);
+    if (featuresOnly && url.host !== 'features') return new Response('Forbidden', { status: 403 });
     let pathname = decodeURIComponent(url.pathname);
 
     if (url.host === 'models') {
@@ -59,7 +60,7 @@ function serve() {
 
     if (pathname === '/' || pathname === '') pathname = '/chart-code.html';
     const file = path.normalize(path.join(DIST, pathname));
-    if (!file.startsWith(DIST)) return new Response('Forbidden', { status: 403 });
+    if (!file.startsWith(DIST + path.sep)) return new Response('Forbidden', { status: 403 });
     try {
       const data = await fs.readFile(file);
       return new Response(data, {

@@ -13,6 +13,16 @@ const SERVICES = [
     icon: 'chart',
   },
   {
+    id: 'vault',
+    name: 'Vault',
+    description: 'Store and sync passwords and secure notes with Vela.',
+    kind: 'native',
+    category: 'web',
+    kindLabel: 'Built-in',
+    page: 'vault.html',
+    icon: 'vault',
+  },
+  {
     id: 'picture-connector',
     name: 'Picture Connector',
     description: 'Merge and annotate screenshots — stitch images with arrows and labels.',

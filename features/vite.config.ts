@@ -43,6 +43,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         connect: resolve(__dirname, 'connect.html'),
+        vault: resolve(__dirname, 'vault.html'),
         'chart-code': resolve(__dirname, 'chart-code.html'),
         'picture-connector': resolve(__dirname, 'picture-connector.html'),
         'media-converter': resolve(__dirname, 'media-converter.html'),

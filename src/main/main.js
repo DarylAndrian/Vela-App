@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, session } = require('electron');
 const path = require('path');
 const config = require('./config');
 const services = require('./services');
@@ -6,6 +6,7 @@ const viewManager = require('./viewManager');
 const externalApps = require('./externalApps');
 const featuresProtocol = require('./featuresProtocol');
 const velaApi = require('./velaApi/ipc');
+const vaultWorkspace = require('./velaApi/vaultWorkspace');
 const mediaEngine = require('./mediaEngine');
 const imageEngine = require('./imageEngine');
 const modelCache = require('./modelCache');
@@ -55,7 +56,7 @@ if (!gotLock) {
         sandbox: true,
       },
     });
-    viewManager.attach(win, send);
+    viewManager.attach(win, send, id => { if (id === 'vault') vaultWorkspace.clearClipboard(); });
     win.on('resize', () => viewManager.layout());
     win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
   }
@@ -77,7 +78,7 @@ if (!gotLock) {
           viewManager.openLocal('connect', `${FEATURES_BASE}/connect.html`);
           return;
         }
-        viewManager.openLocal(id, `${FEATURES_BASE}/${svc.page}`);
+        viewManager.openLocal(id, id === 'vault' ? vaultWorkspace.URL : `${FEATURES_BASE}/${svc.page}`);
         return;
       }
       case 'external': {
@@ -102,7 +103,8 @@ if (!gotLock) {
     nativeTheme.themeSource = theme === 'dark' || theme === 'light' ? theme : 'system';
   }
 
-  function accountChanged(connected) {
+  function accountChanged(connected, identity, reason) {
+    if (identity || reason === 'disconnect') vaultWorkspace.accountChanged(identity, reason);
     send('service:state', { type: 'account-changed' });
     if (connected) {
       if (chartAfterConnect) {
@@ -125,7 +127,9 @@ if (!gotLock) {
     ipcMain.handle('services:list', () => services.listWithStates(config.load()));
     ipcMain.handle('config:get', () => ({ ...config.load(), configPath: config.configPath() }));
     ipcMain.handle('config:save', (_e, cfg) => {
+      const previous = config.load().velaBaseUrl;
       const saved = config.save(cfg);
+      vaultWorkspace.serverChanged(previous, saved.velaBaseUrl);
       applyAppearance(saved.theme);
       velaApi.syncBaseUrl();
       notify('service:state', { type: 'theme:changed', theme: saved.theme });
@@ -153,6 +157,7 @@ if (!gotLock) {
       return result.canceled ? null : result.filePaths[0];
     });
     velaApi.registerIpc({ notify, getWindow: () => win, accountChanged });
+    vaultWorkspace.register();
     mediaEngine.registerIpc({ notify, getWindow: () => win });
     imageEngine.registerIpc();
     modelCache.registerIpc({ notify });
@@ -1065,6 +1070,10 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     featuresProtocol.serve();
+    const vaultSession = session.fromPartition('vela-vault');
+    featuresProtocol.serve(vaultSession.protocol, true);
+    vaultSession.setPermissionCheckHandler(() => false);
+    vaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
     registerIpc();
     applyAppearance(config.load().theme);
     createWindow();

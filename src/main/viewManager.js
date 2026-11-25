@@ -5,6 +5,7 @@ let win;
 let send;
 let workspace;
 let activeId;
+let onDiscard;
 const views = new Map();
 
 ipcMain.on('sign-pdf:dirty', (event, dirty) => {
@@ -12,9 +13,10 @@ ipcMain.on('sign-pdf:dirty', (event, dirty) => {
   if (entry?.view.webContents === event.sender) entry.dirty = dirty === true;
 });
 
-function attach(browserWindow, sender) {
+function attach(browserWindow, sender, discarded = () => {}) {
   win = browserWindow;
   send = sender;
+  onDiscard = discarded;
   workspace = null;
   win.webContents.on('before-input-event', focusWorkspace);
   win.on('close', (event) => {
@@ -59,13 +61,14 @@ function discard(id) {
   if (activeId === id) activeId = null;
   win.contentView.removeChildView(entry.view);
   if (!entry.view.webContents.isDestroyed()) entry.view.webContents.close();
+  onDiscard(id);
 }
 
 function deactivate() {
   const previous = activeId;
   getView()?.setVisible(false);
   activeId = null;
-  if (previous === 'connect') discard(previous);
+  if (previous === 'connect' || previous === 'vault') discard(previous);
 }
 
 function openLocal(id, url) {
@@ -75,11 +78,14 @@ function openLocal(id, url) {
   send('service:state', { type: 'opened', id, loading: !entry?.ready });
 
   if (!entry) {
+    const isVault = id === 'vault';
     const view = new WebContentsView({
       webPreferences: {
         sandbox: true,
         contextIsolation: true,
-        preload: path.join(__dirname, '..', 'preload', 'preload.js'),
+        nodeIntegration: false,
+        ...(isVault ? { partition: 'vela-vault', backgroundThrottling: false } : {}),
+        preload: path.join(__dirname, '..', 'preload', isVault ? 'vault.js' : 'preload.js'),
       },
     });
     entry = { view, ready: false };
@@ -91,7 +97,7 @@ function openLocal(id, url) {
       if ((event.url || target)?.split('#')[0] !== url.split('#')[0]) event.preventDefault();
     });
     wc.setWindowOpenHandler(({ url: target }) => {
-      if (/^https?:\/\//i.test(target)) void shell.openExternal(target);
+      if (!isVault && /^https?:\/\//i.test(target)) void shell.openExternal(target);
       return { action: 'deny' };
     });
     wc.on('before-input-event', (event, input) => {

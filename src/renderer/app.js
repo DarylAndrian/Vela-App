@@ -1,5 +1,6 @@
 const ICONS = {
   chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  vault: '<rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 1 1 8 0v3M12 14v3"/>',
   pictures: '<rect x="3" y="5" width="10" height="10" rx="2"/><rect x="11" y="9" width="10" height="10" rx="2"/><path d="M7 12l2 2 3-4"/>',
   convert: '<path d="M8 4L4 8l4 4"/><path d="M4 8h12a4 4 0 0 1 0 8h-2"/><path d="M16 20l4-4-4-4"/>',
   calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/><path d="M8 15h3M13 15h3"/>',

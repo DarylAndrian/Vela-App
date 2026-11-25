@@ -53,7 +53,7 @@ function registerIpc({ notify: notifyFn, getWindow, accountChanged }) {
   ipcMain.handle('vela:connect', async (_e, token) => {
     try {
       const identity = await getConnector().connect(token);
-      onAccountChanged(true);
+      onAccountChanged(true, identity);
       return { connected: true, identity, daysRemaining: await connector.daysRemaining(), baseUrl: connector.baseUrl };
     } catch (err) {
       return { connected: false, identity: null, daysRemaining: null, baseUrl: getConnector().baseUrl, error: err.message };
@@ -62,7 +62,7 @@ function registerIpc({ notify: notifyFn, getWindow, accountChanged }) {
 
   ipcMain.handle('vela:disconnect', async () => {
     await getConnector().disconnect();
-    onAccountChanged(false);
+    onAccountChanged(false, null, 'disconnect');
   });
 
   ipcMain.handle('vela:open-site', () => shell.openExternal(config.load().velaBaseUrl));
