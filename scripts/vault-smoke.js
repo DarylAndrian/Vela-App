@@ -4,7 +4,7 @@ const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const { once } = require('node:events');
-const { app, BrowserWindow, powerMonitor, safeStorage, session } = require('electron');
+const { app, BrowserWindow, clipboard, powerMonitor, safeStorage, session } = require('electron');
 const features = require('../src/main/featuresProtocol');
 const workspace = require('../src/main/velaApi/vaultWorkspace');
 const views = require('../src/main/viewManager');
@@ -87,6 +87,7 @@ async function run() {
     ${body}
   })()`);
 
+  const userClipboard = await clipboard.readText();
   try {
     await window.loadURL('about:blank');
     assert.equal((await window.webContents.executeJavaScript('window.vault.load()')).ok, false);
@@ -117,8 +118,23 @@ async function run() {
     assert.equal(stored.cache.snapshot.revision, 3);
     assert.doesNotMatch(JSON.stringify(stored), /Smoke fixture product|smoke-test-only master password/);
 
+    // Vault clears its copied secret, but leaves anything the user copied since.
+    const secret = `vault-smoke-secret-${Date.now()}`;
+    const copy = value => contents.executeJavaScript(`window.vault.copy(${JSON.stringify(value)})`);
+    assert.equal((await copy(secret)).ok, true);
+    assert.equal(await clipboard.readText(), secret);
+    assert.equal((await contents.executeJavaScript('window.vault.clearClipboard()')).ok, true);
+    assert.equal(await clipboard.readText(), '');
+    assert.equal((await copy(secret)).ok, true);
+    await clipboard.writeText('copied by the user');
+    await workspace.clearClipboard();
+    assert.equal(await clipboard.readText(), 'copied by the user');
+    assert.equal((await copy(secret)).ok, true);
+
     powerMonitor.emit('lock-screen');
     await automate(contents, `await wait(() => button('Unlock Vault'));`);
+    await workspace.clearClipboard();
+    assert.equal(await clipboard.readText(), '', 'Locking Vault leaves its copied secret on the clipboard.');
     const destroyed = once(contents, 'destroyed');
     views.showShell();
     await destroyed;
@@ -136,7 +152,10 @@ async function run() {
     assert.equal(fs.existsSync(path.join(root, 'vault-session.bin')), false);
     views.showShell();
     window.destroy();
-  } finally { if (server.listening) await closeServer(server); }
+  } finally {
+    if (server.listening) await closeServer(server);
+    await clipboard.writeText(userClipboard).catch(() => {});
+  }
 }
 
 app.whenReady().then(run).then(() => {

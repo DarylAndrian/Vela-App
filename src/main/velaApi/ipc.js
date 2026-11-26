@@ -1,4 +1,4 @@
-const { ipcMain, dialog, shell, clipboard, nativeImage, app } = require('electron');
+const { ipcMain, dialog, shell, clipboard, ClipboardItem, nativeImage, app } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { randomUUID } = require('crypto');
@@ -122,8 +122,12 @@ function registerIpc({ notify: notifyFn, getWindow, accountChanged }) {
     }));
   });
 
+  // Electron 45 removed clipboard.writeImage; images go through ClipboardItem.
   ipcMain.handle('clipboard:write-image', (_e, pngBase64) => {
-    clipboard.writeImage(nativeImage.createFromBuffer(Buffer.from(pngBase64, 'base64')));
+    const image = nativeImage.createFromBuffer(Buffer.from(pngBase64, 'base64'));
+    if (image.isEmpty()) throw new Error('The image could not be read.');
+    const png = image.toPNG();
+    return clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]);
   });
 
   ipcMain.handle('clipboard:write-text', (_e, text) => clipboard.writeText(text));
