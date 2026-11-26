@@ -11,12 +11,34 @@ const file = () => path.join(app.getPath('userData'), 'vault-session.bin');
 const origin = base => vaultOrigin(base, !app.isPackaged);
 let clipboardTimer;
 let copiedText;
+let clipboardQueue = Promise.resolve();
 
-function clearClipboard() {
+// Electron 45 made clipboard reads and writes async. Run Vault's clipboard
+// steps one at a time so a lock that fires during a copy still clears it.
+function serial(task) {
+  const result = clipboardQueue.then(task);
+  clipboardQueue = result.catch(() => {});
+  return result;
+}
+
+async function forgetCopiedText() {
   clearTimeout(clipboardTimer);
-  try { if (copiedText !== undefined && clipboard.readText() === copiedText) clipboard.clear(); }
+  const expected = copiedText;
+  copiedText = undefined;
+  if (expected === undefined) return;
+  try { if (await clipboard.readText() === expected) clipboard.clear(); }
   catch { /* Clipboard access may be unavailable when Windows locks. */ }
-  finally { copiedText = undefined; }
+}
+
+const clearClipboard = () => serial(forgetCopiedText);
+
+function copyText(text) {
+  return serial(async () => {
+    await forgetCopiedText();
+    await clipboard.writeText(text);
+    copiedText = text;
+    clipboardTimer = setTimeout(clearClipboard, 30_000);
+  });
 }
 
 function message(channel, value) {
@@ -67,10 +89,7 @@ function register() {
     theme: () => config.load().theme,
     copy: text => {
       if (typeof text !== 'string' || text.length > 3_000_000) throw new Error('This value is too large to copy.');
-      clearClipboard();
-      clipboard.writeText(text);
-      copiedText = text;
-      clipboardTimer = setTimeout(clearClipboard, 30_000);
+      return copyText(text);
     },
     'clear-clipboard': () => clearClipboard(),
   };
