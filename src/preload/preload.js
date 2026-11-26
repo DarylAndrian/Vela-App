@@ -81,5 +81,8 @@ contextBridge.exposeInMainWorld('vela', {
     writeImage: (pngBase64) => ipcRenderer.invoke('clipboard:write-image', pngBase64),
     writeText: (text) => ipcRenderer.invoke('clipboard:write-text', text),
   },
+  whiteboard: {
+    reportDirty: (dirty) => ipcRenderer.send('whiteboard:dirty', dirty),
+  },
   onAuthExpired: (cb) => ipcRenderer.on('vela:auth-expired', () => cb()),
 });

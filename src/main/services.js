@@ -33,6 +33,16 @@ const SERVICES = [
     icon: 'pictures',
   },
   {
+    id: 'whiteboard',
+    name: 'Whiteboard',
+    description: 'Draw and annotate with pressure-sensitive ink on your computer.',
+    kind: 'native',
+    category: 'local',
+    kindLabel: 'Built-in',
+    page: 'whiteboard.html',
+    icon: 'whiteboard',
+  },
+  {
     id: 'media-converter',
     name: 'Media Converter',
     description: 'Convert, compress and edit images, audio and video — fully on your computer.',

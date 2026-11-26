@@ -2,6 +2,7 @@ const ICONS = {
   chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   vault: '<rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 1 1 8 0v3M12 14v3"/>',
   pictures: '<rect x="3" y="5" width="10" height="10" rx="2"/><rect x="11" y="9" width="10" height="10" rx="2"/><path d="M7 12l2 2 3-4"/>',
+  whiteboard: '<path d="m14 6 4 4M5 19l1-5L16.5 3.5a2.8 2.8 0 0 1 4 4L10 18l-5 1Z"/><path d="M13 21h8"/>',
   convert: '<path d="M8 4L4 8l4 4"/><path d="M4 8h12a4 4 0 0 1 0 8h-2"/><path d="M16 20l4-4-4-4"/>',
   calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/><path d="M8 15h3M13 15h3"/>',
   macro: '<path d="M9 3v2M6.16 6.16 4.74 4.74M5 9H3m6 4v2m4-6h2m-8.84 2.84-1.42 1.42m8.52-8.52-1.42 1.42M10 10l4 11 1.8-5.2L21 14Z"/>',

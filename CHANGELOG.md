@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-26
+
+### Added
+- Whiteboard in Home and the sidebar. Write and annotate on a multipage A4 notebook with pressure-sensitive ink, shapes, blank/ruled/dotted paper, and undo/redo. Paste screenshots, move and resize them, then copy a region as a transparent PNG or save it as a white-background JPG. Notebooks save locally and restore after restart.
+- Palm rejection for pen input: touches near pen use are ignored, so resting a palm no longer scrolls the page.
+
 ## [0.8.2] - 2026-11-24
 
 ### Added

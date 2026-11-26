@@ -18,6 +18,7 @@ Vela-App is a desktop launcher for the Vela service family. Instead of juggling 
 - **Media Converter** — a six-tool local suite powered by native ffmpeg: convert, compress, and process media entirely on your PC — files are never uploaded. AI background-removal models are downloaded on first use and stay local afterwards
 - **Taiwan Year Calculator** — convert between ROC (Taiwan) years and the Gregorian calendar, fully offline
 - **Macro Recorder** — record mouse and keyboard actions, then replay them for a set number of cycles or in a loop. Press **F9** to stop recording and **F10** to cancel or stop playback. Open existing VelaClicker JSON files and save recordings locally.
+- **Whiteboard** — a multipage A4 notebook with pressure-sensitive pen ink, shapes, blank/ruled/dotted paper, zoom, and undo/redo. Paste screenshots, annotate them, then copy a region as a transparent PNG or save it as a JPG. Palm rejection ignores touches near the pen. Notebooks save locally.
 
 ### Desktop integration
 - Native Windows app with NSIS installer (desktop and Start menu shortcuts)
@@ -46,6 +47,7 @@ Useful scripts:
 | --- | --- |
 | `npm start` | Run the app in development |
 | `npm run smoke` | Run the app in smoke-test mode |
+| `npm run whiteboard:device` | Drive Whiteboard with injected Windows pen and touch input and check clipboard copy (briefly takes over the pointer and clipboard) |
 | `npm run shots` | Capture app screenshots |
 | `npm run features:dev` | Start the Vite dev server for native tools (`features/`) |
 | `npm run features:build` | Build the native tools bundle |

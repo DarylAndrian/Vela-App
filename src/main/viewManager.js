@@ -13,6 +13,11 @@ ipcMain.on('sign-pdf:dirty', (event, dirty) => {
   if (entry?.view.webContents === event.sender) entry.dirty = dirty === true;
 });
 
+ipcMain.on('whiteboard:dirty', (event, dirty) => {
+  const entry = views.get('whiteboard');
+  if (entry?.view.webContents === event.sender) entry.dirty = dirty === true;
+});
+
 function attach(browserWindow, sender, discarded = () => {}) {
   win = browserWindow;
   send = sender;
@@ -20,9 +25,13 @@ function attach(browserWindow, sender, discarded = () => {}) {
   workspace = null;
   win.webContents.on('before-input-event', focusWorkspace);
   win.on('close', (event) => {
-    if (views.get('sign-pdf')?.dirty && dialog.showMessageBoxSync(win, {
+    const dirtyPdf = views.get('sign-pdf')?.dirty;
+    const dirtyBoard = views.get('whiteboard')?.dirty;
+    const message = dirtyPdf && dirtyBoard ? 'Discard unsaved changes in Sign PDF and Whiteboard?'
+      : dirtyBoard ? 'Discard unsaved changes to this Whiteboard?' : 'Discard unsaved changes to this PDF?';
+    if ((dirtyPdf || dirtyBoard) && dialog.showMessageBoxSync(win, {
       type: 'warning',
-      message: 'Discard unsaved changes to this PDF?',
+      message,
       buttons: ['Keep editing', 'Discard changes'],
       defaultId: 0,
       cancelId: 0,
@@ -71,7 +80,7 @@ function deactivate() {
   if (previous === 'connect' || previous === 'vault') discard(previous);
 }
 
-function openLocal(id, url) {
+function openLocal(id, url, testSession) {
   if (id !== activeId) deactivate();
   activeId = id;
   let entry = views.get(id);
@@ -85,6 +94,7 @@ function openLocal(id, url) {
         contextIsolation: true,
         nodeIntegration: false,
         ...(isVault ? { partition: 'vela-vault', backgroundThrottling: false } : {}),
+        ...(testSession ? { session: testSession } : {}),
         preload: path.join(__dirname, '..', 'preload', isVault ? 'vault.js' : 'preload.js'),
       },
     });

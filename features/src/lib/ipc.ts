@@ -82,6 +82,7 @@ interface VelaBridge {
     writeImage(pngBase64: string): Promise<void>;
     writeText(text: string): Promise<void>;
   };
+  whiteboard: { reportDirty(dirty: boolean): void };
   onAuthExpired(cb: () => void): void;
 }
 

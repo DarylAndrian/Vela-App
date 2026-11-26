@@ -46,6 +46,7 @@ export default defineConfig({
         vault: resolve(__dirname, 'vault.html'),
         'chart-code': resolve(__dirname, 'chart-code.html'),
         'picture-connector': resolve(__dirname, 'picture-connector.html'),
+        whiteboard: resolve(__dirname, 'whiteboard.html'),
         'media-converter': resolve(__dirname, 'media-converter.html'),
         'taiwan-year': resolve(__dirname, 'taiwan-year.html'),
         velapt: resolve(__dirname, 'velapt.html'),

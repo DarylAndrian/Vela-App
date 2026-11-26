@@ -1,4 +1,4 @@
-const { ipcMain, dialog, shell, clipboard, nativeImage, app } = require('electron');
+const { ipcMain, dialog, shell, clipboard, ClipboardItem, app } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { randomUUID } = require('crypto');
@@ -122,8 +122,9 @@ function registerIpc({ notify: notifyFn, getWindow, accountChanged }) {
     }));
   });
 
-  ipcMain.handle('clipboard:write-image', (_e, pngBase64) => {
-    clipboard.writeImage(nativeImage.createFromBuffer(Buffer.from(pngBase64, 'base64')));
+  ipcMain.handle('clipboard:write-image', async (_e, pngBase64) => {
+    const png = new Blob([Buffer.from(pngBase64, 'base64')], { type: 'image/png' });
+    await clipboard.write([new ClipboardItem({ 'image/png': png })]);
   });
 
   ipcMain.handle('clipboard:write-text', (_e, text) => clipboard.writeText(text));

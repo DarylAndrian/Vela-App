@@ -24,6 +24,7 @@ const gotLock = app.requestSingleInstanceLock();
 let win = null;
 let navigation = 0;
 let chartAfterConnect = false;
+let smokeWhiteboardSession;
 
 if (!gotLock) {
   app.quit();
@@ -78,7 +79,8 @@ if (!gotLock) {
           viewManager.openLocal('connect', `${FEATURES_BASE}/connect.html`);
           return;
         }
-        viewManager.openLocal(id, id === 'vault' ? vaultWorkspace.URL : `${FEATURES_BASE}/${svc.page}`);
+        viewManager.openLocal(id, id === 'vault' ? vaultWorkspace.URL : `${FEATURES_BASE}/${svc.page}`,
+          id === 'whiteboard' ? smokeWhiteboardSession : undefined);
         return;
       }
       case 'external': {
@@ -206,6 +208,8 @@ if (!gotLock) {
       })()`);
       check('persistent rail, Settings and launcher render', homeState.destinations === nativeCount &&
         homeState.launches === list.length && homeState.settings && homeState.account && homeState.home, JSON.stringify(homeState));
+      const whiteboardSmoke = require('../../scripts/whiteboard-smoke');
+      await whiteboardSmoke.run(win, viewManager, check);
       check('tasklist probe works (explorer.exe running)', await externalApps.isRunning('explorer.exe'));
       const wc = await new Promise((resolve) => {
         viewManager.openLocal('smoke-native', `${FEATURES_BASE}/chart-code.html`);
@@ -250,6 +254,11 @@ if (!gotLock) {
         };
       })()`);
       check('picture-connector composites pasted images', pcResult.hasCanvas && pcResult.w > 0 && pcResult.thumbs === 2, JSON.stringify(pcResult));
+      const pictureWrites = await whiteboardSmoke.captureImageWrites(async (writes) => {
+        await pcWc.executeJavaScript(`[...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Copy').click()`);
+        await whiteboardSmoke.waitFor(() => writes.length > 0);
+      });
+      check('Picture Connector copies PNG through the Electron image bridge', pictureWrites.length === 1 && pictureWrites[0].subarray(1, 4).toString() === 'PNG');
       viewManager.showShell();
 
       // Chart Code editor E2E with stubbed storage/IPC (no network needed).
@@ -1060,6 +1069,22 @@ if (!gotLock) {
     } catch (err) {
       check('smoke crashed', false, err.message);
     }
+    reportSmoke(results);
+  }
+
+  // Pen, touch and clipboard checks through Windows itself, in the isolated smoke session.
+  async function runWhiteboardDevice() {
+    const results = [];
+    const check = (name, ok, detail = '') => results.push(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`);
+    try {
+      await require('../../scripts/whiteboard-device').run(win, viewManager, check);
+    } catch (err) {
+      check('Whiteboard device check crashed', false, err.message);
+    }
+    reportSmoke(results);
+  }
+
+  function reportSmoke(results) {
     const failed = results.some((l) => l.startsWith('FAIL'));
     const out = (msg) => require('fs').writeSync(1, `${msg}\n`);
     out('\n=== SMOKE RESULTS ===');
@@ -1070,6 +1095,10 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     featuresProtocol.serve();
+    if (SMOKE) {
+      smokeWhiteboardSession = session.fromPartition('vela-smoke-whiteboard');
+      featuresProtocol.serve(smokeWhiteboardSession.protocol, true);
+    }
     const vaultSession = session.fromPartition('vela-vault');
     featuresProtocol.serve(vaultSession.protocol, true);
     vaultSession.setPermissionCheckHandler(() => false);
@@ -1078,7 +1107,7 @@ if (!gotLock) {
     applyAppearance(config.load().theme);
     createWindow();
     if (SMOKE) {
-      win.webContents.on('did-finish-load', () => runSmoke());
+      win.webContents.on('did-finish-load', () => (process.argv.includes('--whiteboard-device') ? runWhiteboardDevice() : runSmoke()));
     }
     if (process.argv.includes('--shots')) {
       win.webContents.on('did-finish-load', () => {
